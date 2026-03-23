@@ -57,6 +57,23 @@ function Hitbox:Update()
 					if _G.LocalHitPrediction and self.attackData then
 						_G.LocalHitPrediction(character, self.attackData)
 					end
+
+					-- =============================================
+					-- 📍 CALLBACK onHit: posición del golpe para VFX
+					-- El punto de impacto es el punto medio entre atacante y víctima
+					-- =============================================
+					if self.onHit then
+						local victimRoot = character:FindFirstChild("HumanoidRootPart")
+						local hitPosition = self.root.Position
+						if victimRoot then
+							hitPosition = (self.root.Position + victimRoot.Position) / 2
+						end
+						local rawDir = victimRoot
+							and (victimRoot.Position - self.root.Position)
+							or Vector3.new(0, 0, -1)
+						local direction = rawDir.Magnitude > 0.001 and rawDir.Unit or Vector3.new(0, 0, -1)
+						self.onHit(hitPosition, direction, character)
+					end
 				end
 			end
 		end

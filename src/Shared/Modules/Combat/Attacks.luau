@@ -263,4 +263,94 @@ Attacks.AirHeavy = {
 	},
 }
 
+-- ============================================
+-- MOVIMIENTOS ESPECIALES
+-- ============================================
+
+Attacks.Fireball = {
+	Id = "Fireball",
+
+	Startup = 15 / 60,
+	Active = 30 / 60,
+	Recovery = 12 / 60,
+
+	Animation = "Fireball",
+
+	SoundEffect = "Punch",
+	SoundVolume = 0.8,
+
+	HitType = "Special",
+	HitAnimation = "HurtLight",
+	AttackHeight = "Mid",
+
+	Damage = 12,
+	HitstunDuration = 0.3,
+	Pushback = 12,
+	HitstopFrames = 6,
+	BlockPushback = 8,
+	BlockstunDuration = 0.2,
+	ChipDamage = 3,
+
+	GroundOnly = true,
+	Knockdown = false,
+	LaunchForce = nil,
+
+	IsSpecial = true,
+
+	-- Propiedades de proyectil (para sistema futuro)
+	IsProjectile = true,
+	ProjectileSpeed = 40,
+	ProjectileLifetime = 1.5,
+
+	CancelWindow = nil,
+
+	Hitbox = {
+		Size = Vector3.new(3, 3, 3),
+		Offset = Vector3.new(0, 0, -3),
+	},
+}
+
+Attacks.Uppercut = {
+	Id = "Uppercut",
+
+	Startup = 6 / 60,
+	Active = 6 / 60,
+	Recovery = 20 / 60,
+
+	Animation = "Uppercut",
+
+	SoundEffect = "Punch",
+	SoundVolume = 1.0,
+
+	HitType = "Special",
+	HitAnimation = "Launch",
+	AttackHeight = "Mid",
+
+	Damage = 18,
+	HitstunDuration = 0.4,
+	Pushback = 3,
+	HitstopFrames = 10,
+	BlockPushback = 12,
+	BlockstunDuration = 0.3,
+	ChipDamage = 2,
+
+	GroundOnly = true,
+	Knockdown = false,
+	LaunchForce = 45,
+
+	IsSpecial = true,
+
+	-- AttackJump: el personaje sube con el uppercut
+	AttackJump = true,
+	JumpHeight = 40,
+	JumpFrameStart = 3,
+
+	CancelWindow = nil,
+
+	Hitbox = {
+		Size = Vector3.new(4, 6, 4),
+		Offset = Vector3.new(0, 1, -2),
+	},
+}
+
 return Attacks

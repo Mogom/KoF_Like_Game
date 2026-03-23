@@ -162,14 +162,16 @@ RunService.RenderStepped:Connect(function()
 		return
 	end
 
-	if command == "Punch" then
+	if command == "Fireball" then
+		controller:RequestAttack("Fireball")
+	elseif command == "Uppercut" then
+		controller:RequestAttack("Uppercut")
+	elseif command == "Punch" then
 		buffer:Consume("Punch")
 		controller:RequestAttack("Punch")
 	elseif command == "HeavyPunch" then
 		buffer:Consume("HeavyPunch")
 		controller:RequestAttack("HeavyPunch")
-	elseif command == "Fireball" then
-		-- special
 	end
 end)
 
