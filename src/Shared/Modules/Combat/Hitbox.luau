@@ -46,7 +46,7 @@ function Hitbox:Update()
 				local humanoid = character:FindFirstChild("Humanoid")
 				if humanoid then
 					self.alreadyHit[character] = true
-					print("🎯 Hitbox detected HurtboxBody on:", character.Name)
+					-- print("🎯 Hitbox detected HurtboxBody on:", character.Name)
 
 					DamageService.ApplyHit(self.root.Parent, character, self.attackData)
 

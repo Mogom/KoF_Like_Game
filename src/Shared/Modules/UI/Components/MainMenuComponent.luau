@@ -1,28 +1,141 @@
+--[[
+	MainMenuComponent.luau
+	-----------------------
+	Menú principal del juego estilo fighting game.
+
+	LAYOUT:
+	┌──────────────────────────────────┐
+	│  [Botones]         [Zona PNG]    │
+	│   Play                           │
+	│   Training                       │
+	│   Create Sala                    │
+	│   Shop                           │
+	│                                  │
+	└──────────────────────────────────┘
+
+	CÓMO EDITAR:
+	- Colores de botones: tabla BUTTON_CONFIG más abajo (Color, HoverColor)
+	- Texto de botones: campo "Text" en BUTTON_CONFIG
+	- Tamaño de botones: BUTTON_WIDTH, BUTTON_HEIGHT
+	- Espacio entre botones: BUTTON_SPACING
+	- Posición del panel de botones: PANEL_PADDING_LEFT, PANEL_PADDING_TOP
+	- Color de fondo: BACKGROUND_COLOR
+	- Zona PNG (derecha): buscar "CharacterDisplayArea" en render()
+	  → Para poner imagen: cambiar Frame por ImageLabel y usar Image = "rbxassetid://TU_ID"
+	- Para agregar un botón nuevo: agregar entrada a BUTTON_CONFIG con Key único
+	  y registrar su callback en self.callbacks dentro del constructor
+
+	CALLBACKS (se pasan via props):
+	- onPlayClick       → Al pulsar "Play"
+	- onTrainingClick   → Al pulsar "Training"
+	- onCreateSalaClick → Al pulsar "Create Sala"
+	- onShopClick       → Al pulsar "Shop"
+]]
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local UI = Modules:WaitForChild("UI")
 
 local UIBuilder = require(UI:WaitForChild("UIBuilder"))
 
--- Menú principal estilo arcade: Training y Versus con animaciones
 local MainMenuComponent = {}
 MainMenuComponent.__index = MainMenuComponent
 
--- Constructor: recibe callbacks de Training y Versus
+-- ============================================
+-- 🎨 CONFIGURACIÓN VISUAL (editar aquí)
+-- ============================================
+
+-- Color de fondo general del menú
+local BACKGROUND_COLOR = Color3.fromRGB(20, 20, 25)
+
+-- Zona derecha (placeholder para personaje/PNG): color gris
+local DISPLAY_AREA_COLOR = Color3.fromRGB(100, 100, 105)
+
+-- Qué tanto del ancho ocupa el panel de botones (0.35 = 35% izquierda)
+local BUTTON_PANEL_WIDTH_SCALE = 0.35
+
+-- Padding del panel de botones
+local PANEL_PADDING_LEFT = 30 -- px desde la izquierda
+local PANEL_PADDING_TOP = 80 -- px desde arriba
+
+-- Tamaño de cada botón
+local BUTTON_WIDTH = 230 -- px ancho
+local BUTTON_HEIGHT = 60 -- px alto
+local BUTTON_SPACING = 14 -- px entre botones
+local BUTTON_CORNER = 10 -- radio de esquinas redondeadas
+
+-- Tamaño del texto en botones
+local BUTTON_TEXT_SIZE = 28
+
+--[[
+	Tabla de botones del menú.
+	Cada entrada define:
+	- Key: identificador interno (debe coincidir con self.callbacks)
+	- Text: texto que se muestra en el botón
+	- Color: color de fondo del botón
+	- HoverColor: color al pasar el mouse encima
+	
+	El ORDEN de esta tabla define el orden vertical de los botones.
+	Para agregar un botón nuevo, agrega una entrada aquí y registra
+	su callback en self.callbacks dentro del constructor.
+]]
+local BUTTON_CONFIG = {
+	{
+		Key = "Play",
+		Text = "Play",
+		Color = Color3.fromRGB(140, 15, 20), -- Rojo oscuro
+		HoverColor = Color3.fromRGB(180, 25, 30),
+	},
+	{
+		Key = "Training",
+		Text = "Training",
+		Color = Color3.fromRGB(120, 10, 15), -- Vino / burdeos
+		HoverColor = Color3.fromRGB(160, 20, 25),
+	},
+	{
+		Key = "CreateSala",
+		Text = "Create Sala",
+		Color = Color3.fromRGB(160, 210, 20), -- Verde lima
+		HoverColor = Color3.fromRGB(190, 240, 40),
+	},
+	{
+		Key = "Shop",
+		Text = "Shop",
+		Color = Color3.fromRGB(150, 60, 170), -- Morado
+		HoverColor = Color3.fromRGB(180, 80, 200),
+	},
+	{
+		Key = "Settings",
+		Text = "Settings",
+		Color = Color3.fromRGB(125, 122, 126), -- Gris
+		HoverColor = Color3.fromRGB(166, 165, 167),
+	},
+}
+
+-- ============================================
+-- CONSTRUCTOR
+-- ============================================
+
+-- Crea el menú principal y bindea callbacks
 function MainMenuComponent.new(parent, props)
 	local self = setmetatable({}, MainMenuComponent)
 
 	self.props = props or {}
-	self.onTrainingClick = self.props.onTrainingClick
-	self.onVersusClick = self.props.onVersusClick
-	self.element = nil
-	self.menuFrame = nil
-	self.selectedIndex = 1
+	self.element = nil -- ScreenGui raíz
+	self.buttonPanel = nil -- Frame que contiene los botones
+	self.buttons = {} -- { [Key] = TextButton }
 
-	-- Crear UI
+	-- Mapeo de Key de BUTTON_CONFIG → función callback
+	-- Para agregar un callback nuevo: self.callbacks["MiKey"] = self.props.onMiKeyClick
+	self.callbacks = {
+		Play = self.props.onPlayClick,
+		Training = self.props.onTrainingClick,
+		CreateSala = self.props.onCreateSalaClick,
+		Shop = self.props.onShopClick,
+	}
+
 	local success, err = pcall(function()
 		self:render(parent)
-		self:startSelectorAnimation()
 	end)
 
 	if not success then
@@ -33,9 +146,12 @@ function MainMenuComponent.new(parent, props)
 	return self
 end
 
+-- ============================================
+-- RENDER
+-- ============================================
+
 -- Construye toda la UI del menú principal
 function MainMenuComponent:render(parent)
-	-- ✅ Crear ScreenGui
 	local screenGui = UIBuilder.ScreenGui({
 		Name = "MainMenu",
 		ResetOnSpawn = false,
@@ -43,349 +159,162 @@ function MainMenuComponent:render(parent)
 		IgnoreGuiInset = true,
 		Parent = parent,
 	})
-
 	self.element = screenGui
 
-	-- ✅ Background oscuro
-	local background = UIBuilder.Frame({
+	-- Fondo oscuro completo
+	UIBuilder.Frame({
 		Name = "Background",
 		Size = UDim2.new(1, 0, 1, 0),
-		BackgroundColor3 = Color3.fromRGB(10, 10, 15),
+		BackgroundColor3 = BACKGROUND_COLOR,
 		BorderSizePixel = 0,
 		Parent = screenGui,
 	})
 
-	-- ✅ Frame principal con borde neón
-	local menuFrame = UIBuilder.Frame({
-		Name = "MenuFrame",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(0, 550, 0, 600),
-		BackgroundColor3 = Color3.fromRGB(15, 15, 20),
+	-- ============================================
+	-- ZONA DERECHA: Área para personaje / PNG
+	-- Para poner una imagen en vez del color gris:
+	--   1. Cambia UIBuilder.Frame por UIBuilder.ImageLabel
+	--   2. Agrega: Image = "rbxassetid://TU_ASSET_ID",
+	--   3. Agrega: ScaleType = Enum.ScaleType.Crop (o Fit),
+	-- ============================================
+	local displayArea = UIBuilder.ImageLabel({
+		Name = "CharacterDisplayArea",
+		Image = "rbxassetid://2867269", -- Reemplaza con tu imagen o deja vacío para solo color
+		ScaleType = Enum.ScaleType.Crop,
+		Position = UDim2.new(BUTTON_PANEL_WIDTH_SCALE, 0, 0, 0),
+		Size = UDim2.new(1 - BUTTON_PANEL_WIDTH_SCALE, 0, 1, 0),
+		BackgroundColor3 = DISPLAY_AREA_COLOR,
 		BorderSizePixel = 0,
+		ClipsDescendants = true,
 		Parent = screenGui,
-
-		Children = {
-			-- Borde exterior verde neón
-			UIBuilder.UIStroke({
-				Color = Color3.fromRGB(0, 255, 100),
-				Thickness = 4,
-				Transparency = 0,
-			}),
-			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 8) }),
-		},
 	})
 
-	self.menuFrame = menuFrame
 
-	-- ✅ Borde interno (doble borde estilo arcade)
-	local innerBorder = UIBuilder.Frame({
-		Name = "InnerBorder",
-		Position = UDim2.new(0, 10, 0, 10),
-		Size = UDim2.new(1, -20, 1, -20),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Parent = menuFrame,
+	-- local displayArea = UIBuilder.Frame({
+	-- 	Name = "CharacterDisplayArea",
+	-- 	Position = UDim2.new(BUTTON_PANEL_WIDTH_SCALE, 0, 0, 0),
+	-- 	Size = UDim2.new(1 - BUTTON_PANEL_WIDTH_SCALE, 0, 1, 0),
+	-- 	BackgroundColor3 = DISPLAY_AREA_COLOR,
+	-- 	BorderSizePixel = 0,
+	-- 	ClipsDescendants = true,
+	-- 	Parent = screenGui,
+	-- })
 
-		Children = {
-			UIBuilder.UIStroke({
-				Color = Color3.fromRGB(0, 200, 80),
-				Thickness = 2,
-				Transparency = 0.3,
-			}),
-		},
-	})
 
-	-- ✅ Decoración esquina superior izquierda
-	self:createCornerDecoration(menuFrame, "TopLeft", UDim2.new(0, -10, 0, -10))
-	self:createCornerDecoration(menuFrame, "TopRight", UDim2.new(1, 10, 0, -10))
-	self:createCornerDecoration(menuFrame, "BottomLeft", UDim2.new(0, -10, 1, 10))
-	self:createCornerDecoration(menuFrame, "BottomRight", UDim2.new(1, 10, 1, 10))
-
-	-- ✅ Header "MAIN MENU" estilo arcade
-	local header = UIBuilder.TextLabel({
-		Name = "Header",
-		Position = UDim2.new(0.5, 0, 0, 30),
-		Size = UDim2.new(0.9, 0, 0, 70),
-		AnchorPoint = Vector2.new(0.5, 0),
-		BackgroundColor3 = Color3.fromRGB(0, 255, 100),
-		BorderSizePixel = 0,
-		Text = "MAIN MENU",
-		TextColor3 = Color3.fromRGB(0, 0, 0),
-		TextSize = 40,
-		Font = Enum.Font.GothamBold,
-		TextStrokeTransparency = 1,
-		Parent = menuFrame,
-
-		Children = {
-			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 4) }),
-			UIBuilder.UIStroke({
-				Color = Color3.fromRGB(255, 255, 0),
-				Thickness = 3,
-			}),
-		},
-	})
-
-	-- ✅ Efecto de sombra en header
-	UIBuilder.TextLabel({
-		Name = "HeaderShadow",
-		Position = UDim2.new(0, 3, 0, 3),
-		Size = UDim2.new(1, 0, 1, 0),
-		BackgroundTransparency = 1,
-		Text = "MAIN MENU",
-		TextColor3 = Color3.fromRGB(0, 150, 50),
-		TextSize = 40,
-		Font = Enum.Font.GothamBold,
-		TextTransparency = 0.5,
-		ZIndex = 0,
-		Parent = header,
-	})
-
-	-- ✅ Separador decorativo
+	-- Diagonal decorativa: crea el efecto de corte en ángulo
+	-- entre la zona de botones y la zona del personaje
 	UIBuilder.Frame({
-		Name = "Separator",
-		Position = UDim2.new(0.5, 0, 0, 120),
-		Size = UDim2.new(0.8, 0, 0, 2),
-		AnchorPoint = Vector2.new(0.5, 0),
-		BackgroundColor3 = Color3.fromRGB(0, 255, 100),
+		Name = "DiagonalOverlay",
+		Position = UDim2.new(-0.25, 0, 0, 0),
+		Size = UDim2.new(0.5, 0, 1.2, 0),
+		AnchorPoint = Vector2.new(0, 0),
+		BackgroundColor3 = BACKGROUND_COLOR,
 		BorderSizePixel = 0,
-		Parent = menuFrame,
-
-		Children = {
-			UIBuilder.UIGradient({
-				Transparency = NumberSequence.new({
-					NumberSequenceKeypoint.new(0, 1),
-					NumberSequenceKeypoint.new(0.5, 0),
-					NumberSequenceKeypoint.new(1, 1),
-				}),
-			}),
-		},
+		Rotation = 12,
+		Parent = displayArea,
 	})
 
-	-- ✅ Selector animado (flecha)
-	self.selector = UIBuilder.TextLabel({
-		Name = "Selector",
-		Position = UDim2.new(0, 50, 0, 200),
-		Size = UDim2.new(0, 40, 0, 60),
+	-- ============================================
+	-- PANEL IZQUIERDO: Contenedor de botones
+	-- ============================================
+	local buttonPanel = UIBuilder.Frame({
+		Name = "ButtonPanel",
+		Position = UDim2.new(0, PANEL_PADDING_LEFT, 0, PANEL_PADDING_TOP),
+		Size = UDim2.new(BUTTON_PANEL_WIDTH_SCALE, -PANEL_PADDING_LEFT, 1, -PANEL_PADDING_TOP),
 		BackgroundTransparency = 1,
-		Text = "▶",
-		TextColor3 = Color3.fromRGB(0, 255, 100),
-		TextSize = 40,
-		Font = Enum.Font.GothamBold,
-		Parent = menuFrame,
+		Parent = screenGui,
 	})
+	self.buttonPanel = buttonPanel
 
-	-- ✅ Botones estilo arcade con números
-	local button1 = self:createArcadeButton({
-		number = "1",
-		text = "TRAINING MODE",
-		position = UDim2.new(0.5, 0, 0, 200),
-		onClick = self.onTrainingClick,
-		parent = menuFrame,
-	})
+	-- Crear cada botón desde la tabla de configuración
+	for i, config in ipairs(BUTTON_CONFIG) do
+		local yOffset = (i - 1) * (BUTTON_HEIGHT + BUTTON_SPACING)
+		self:_createMenuButton(buttonPanel, config, yOffset)
+	end
 
-	local button2 = self:createArcadeButton({
-		number = "2",
-		text = "1v1 VERSUS",
-		position = UDim2.new(0.5, 0, 0, 300),
-		onClick = self.onVersusClick,
-		parent = menuFrame,
-	})
-
-	-- ✅ Info box inferior (estilo KOF)
-	local infoBox = UIBuilder.Frame({
-		Name = "InfoBox",
-		Position = UDim2.new(0.5, 0, 1, -80),
-		Size = UDim2.new(0.9, 0, 0, 60),
-		AnchorPoint = Vector2.new(0.5, 0),
-		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-		BorderSizePixel = 0,
-		Parent = menuFrame,
-
-		Children = {
-			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 4) }),
-			UIBuilder.UIStroke({
-				Color = Color3.fromRGB(0, 255, 100),
-				Thickness = 2,
-			}),
-		},
-	})
-
-	-- ✅ Label "INFO" estilo arcade
-	UIBuilder.TextLabel({
-		Name = "InfoLabel",
-		Position = UDim2.new(0, 10, 0, 0),
-		Size = UDim2.new(0, 80, 1, 0),
-		BackgroundColor3 = Color3.fromRGB(0, 255, 100),
-		BorderSizePixel = 0,
-		Text = "INFO",
-		TextColor3 = Color3.fromRGB(0, 0, 0),
-		TextSize = 20,
-		Font = Enum.Font.GothamBold,
-		Parent = infoBox,
-	})
-
-	-- ✅ Texto de info
-	UIBuilder.TextLabel({
-		Name = "InfoText",
-		Position = UDim2.new(0, 100, 0, 0),
-		Size = UDim2.new(1, -110, 1, 0),
-		BackgroundTransparency = 1,
-		Text = "Select your game mode to begin",
-		TextColor3 = Color3.fromRGB(200, 200, 200),
-		TextSize = 16,
-		Font = Enum.Font.Gotham,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = infoBox,
-	})
-
-	-- ✅ Animación de entrada (desde arriba)
-	menuFrame.Position = UDim2.new(0.5, 0, -0.5, 0)
-	UIBuilder.tween(menuFrame, 0.6, {
-		Position = UDim2.new(0.5, 0, 0.5, 0),
+	-- Animación de entrada: botones se deslizan desde la izquierda
+	buttonPanel.Position = UDim2.new(-0.4, 0, 0, PANEL_PADDING_TOP)
+	UIBuilder.tween(buttonPanel, 0.5, {
+		Position = UDim2.new(0, PANEL_PADDING_LEFT, 0, PANEL_PADDING_TOP),
 	}, Enum.EasingStyle.Back)
 end
 
--- ✅ Crear decoración de esquina estilo arcade
--- Crea decoración de esquina para el frame
-function MainMenuComponent:createCornerDecoration(parent, corner, position)
-	local decoration = UIBuilder.Frame({
-		Name = corner .. "Decoration",
-		Position = position,
-		Size = UDim2.new(0, 20, 0, 20),
-		BackgroundColor3 = Color3.fromRGB(0, 255, 100),
-		BorderSizePixel = 0,
-		Rotation = 45,
-		ZIndex = 10,
-		Parent = parent,
-	})
-end
+-- ============================================
+-- CREAR BOTÓN DE MENÚ
+-- ============================================
 
--- ✅ Crear botón estilo arcade (con número y texto)
--- Crea un botón estilo arcade con hover y click effects
-function MainMenuComponent:createArcadeButton(props)
-	local container = UIBuilder.Frame({
-		Name = "ButtonContainer_" .. props.number,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = props.position,
-		Size = UDim2.new(0, 450, 0, 70),
-		BackgroundTransparency = 1,
-		Parent = props.parent,
-	})
-
-	-- ✅ Número (estilo arcade)
-	local numberLabel = UIBuilder.TextLabel({
-		Name = "Number",
-		Position = UDim2.new(0, 0, 0.5, 0),
-		Size = UDim2.new(0, 50, 0, 50),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BackgroundColor3 = Color3.fromRGB(20, 20, 30),
-		BorderSizePixel = 0,
-		Text = props.number,
-		TextColor3 = Color3.fromRGB(0, 255, 100),
-		TextSize = 32,
-		Font = Enum.Font.GothamBold,
-		Parent = container,
-
-		Children = {
-			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 8) }),
-			UIBuilder.UIStroke({
-				Color = Color3.fromRGB(0, 200, 80),
-				Thickness = 2,
-			}),
-		},
-	})
-
-	-- ✅ Botón principal
+-- Crea un botón individual con color, hover effect y callback
+function MainMenuComponent:_createMenuButton(parent, config, yOffset)
 	local button = UIBuilder.TextButton({
-		Name = "Button",
-		Position = UDim2.new(0, 70, 0.5, 0),
-		Size = UDim2.new(1, -70, 1, 0),
-		AnchorPoint = Vector2.new(0, 0.5),
-		BackgroundColor3 = Color3.fromRGB(20, 20, 30),
+		Name = "Btn_" .. config.Key,
+		Position = UDim2.new(0, 0, 0, yOffset),
+		Size = UDim2.new(0, BUTTON_WIDTH, 0, BUTTON_HEIGHT),
+		BackgroundColor3 = config.Color,
 		BorderSizePixel = 0,
-		Text = props.text,
-		TextColor3 = Color3.fromRGB(200, 200, 200),
-		TextSize = 24,
+		Text = config.Text,
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		TextSize = BUTTON_TEXT_SIZE,
 		Font = Enum.Font.GothamBold,
 		AutoButtonColor = false,
-		Parent = container,
+		Parent = parent,
 
 		Children = {
-			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 8) }),
-			UIBuilder.UIStroke({
-				Color = Color3.fromRGB(0, 200, 80),
-				Thickness = 2,
-			}),
+			UIBuilder.UICorner({ CornerRadius = UDim.new(0, BUTTON_CORNER) }),
 		},
 	})
 
-	-- ✅ Hover effect (brillo verde)
-	button.MouseEnter:Connect(function()
-		UIBuilder.tween(button, 0.2, {
-			BackgroundColor3 = Color3.fromRGB(0, 100, 50),
-		})
-		UIBuilder.tween(button, 0.2, {
-			TextColor3 = Color3.fromRGB(255, 255, 255),
-		})
+	-- Sombra sutil debajo del botón
+	UIBuilder.Frame({
+		Name = "Shadow",
+		Position = UDim2.new(0, 3, 0, 3),
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.6,
+		BorderSizePixel = 0,
+		ZIndex = 0,
+		Parent = button,
+		Children = {
+			UIBuilder.UICorner({ CornerRadius = UDim.new(0, BUTTON_CORNER) }),
+		},
+	})
 
-		-- Animar número también
-		UIBuilder.tween(numberLabel, 0.2, {
-			BackgroundColor3 = Color3.fromRGB(0, 255, 100),
-			TextColor3 = Color3.fromRGB(0, 0, 0),
+	-- Hover: agranda ligeramente el botón y cambia color
+	button.MouseEnter:Connect(function()
+		UIBuilder.tween(button, 0.12, {
+			BackgroundColor3 = config.HoverColor,
+			Size = UDim2.new(0, BUTTON_WIDTH + 10, 0, BUTTON_HEIGHT + 4),
 		})
 	end)
 
 	button.MouseLeave:Connect(function()
-		UIBuilder.tween(button, 0.2, {
-			BackgroundColor3 = Color3.fromRGB(20, 20, 30),
-		})
-		UIBuilder.tween(button, 0.2, {
-			TextColor3 = Color3.fromRGB(200, 200, 200),
-		})
-
-		UIBuilder.tween(numberLabel, 0.2, {
-			BackgroundColor3 = Color3.fromRGB(20, 20, 30),
-			TextColor3 = Color3.fromRGB(0, 255, 100),
+		UIBuilder.tween(button, 0.12, {
+			BackgroundColor3 = config.Color,
+			Size = UDim2.new(0, BUTTON_WIDTH, 0, BUTTON_HEIGHT),
 		})
 	end)
 
-	-- ✅ Click
-	if props.onClick then
-		button.MouseButton1Click:Connect(props.onClick)
+	-- Conectar callback si existe
+	local callback = self.callbacks[config.Key]
+	if callback then
+		button.MouseButton1Click:Connect(callback)
 	end
 
-	return container
+	self.buttons[config.Key] = button
+	return button
 end
 
--- ✅ Animación del selector (flecha parpadeante)
--- Inicia loop de animación del selector de menú
-function MainMenuComponent:startSelectorAnimation()
-	task.spawn(function()
-		while self.selector and self.selector.Parent do
-			-- Parpadeo
-			UIBuilder.tween(self.selector, 0.5, {
-				TextTransparency = 0.3,
-			})
-			task.wait(0.5)
-			UIBuilder.tween(self.selector, 0.5, {
-				TextTransparency = 0,
-			})
-			task.wait(0.5)
-		end
-	end)
-end
+-- ============================================
+-- MÉTODOS PÚBLICOS
+-- ============================================
 
--- ✅ Hide con animación
--- Oculta el menú con animación de fade out
+-- Oculta el menú con animación de salida hacia la izquierda
 function MainMenuComponent:hide()
-	if not self.menuFrame then
-		warn("❌ menuFrame is nil!")
+	if not self.buttonPanel then
 		return
 	end
 
-	local tween = UIBuilder.tween(self.menuFrame, 0.4, {
-		Position = UDim2.new(0.5, 0, -1, 0),
+	local tween = UIBuilder.tween(self.buttonPanel, 0.3, {
+		Position = UDim2.new(-0.5, 0, 0, PANEL_PADDING_TOP),
 	}, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 
 	tween.Completed:Wait()
@@ -395,11 +324,27 @@ function MainMenuComponent:hide()
 	end
 end
 
--- ✅ Destruir componente
+-- Muestra el menú (re-entrada después de volver de sub-pantalla)
+function MainMenuComponent:show()
+	if not self.element then
+		return
+	end
+
+	self.element.Enabled = true
+
+	if self.buttonPanel then
+		self.buttonPanel.Position = UDim2.new(-0.4, 0, 0, PANEL_PADDING_TOP)
+		UIBuilder.tween(self.buttonPanel, 0.4, {
+			Position = UDim2.new(0, PANEL_PADDING_LEFT, 0, PANEL_PADDING_TOP),
+		}, Enum.EasingStyle.Back)
+	end
+end
+
 -- Destruye toda la UI del menú
 function MainMenuComponent:destroy()
 	if self.element then
 		self.element:Destroy()
+		self.element = nil
 	end
 end
 

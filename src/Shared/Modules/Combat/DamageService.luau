@@ -13,14 +13,14 @@ function DamageService.ApplyHit(attackerCharacter, victimCharacter, attackData)
 		return false
 	end
 
-	print("📤 FireServer ApplyDamage:", attackerCharacter.Name, "=>", victimCharacter.Name)
+	-- print("📤 FireServer ApplyDamage:", attackerCharacter.Name, "=>", victimCharacter.Name)
 
 	ApplyDamageEvent:FireServer(victimCharacter, attackData)
 	return true
 end
 
 ApplyDamageEvent.OnClientEvent:Connect(function(victimCharacter, damage, hitType)
-	print("📩 ApplyDamageEvent.OnClientEvent:", victimCharacter and victimCharacter.Name, damage, hitType)
+	-- print("📩 ApplyDamageEvent.OnClientEvent:", victimCharacter and victimCharacter.Name, damage, hitType)
 end)
 
 return DamageService
