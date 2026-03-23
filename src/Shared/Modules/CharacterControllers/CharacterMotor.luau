@@ -5,9 +5,11 @@ local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Combat = Modules:WaitForChild("Combat")
 local HitstopService = require(Combat:WaitForChild("HitstopService"))
 
+-- Motor de movimiento y física del personaje (walk, push, jump, dodge, colisión, plane lock)
 local CharacterMotor = {}
 CharacterMotor.__index = CharacterMotor
 
+-- Inicializa el motor con el contexto compartido y configura todos los estados por defecto
 function CharacterMotor.new(context, animationController)
 	local self = setmetatable({}, CharacterMotor)
 
@@ -60,21 +62,21 @@ function CharacterMotor.new(context, animationController)
 	self.overlapParams.FilterType = Enum.RaycastFilterType.Exclude
 	self.overlapParams.FilterDescendantsInstances = { self.context.character }
 	self.overlapParams.MaxParts = 20
-	
-	
+
 	-- =============================================
-	-- 💨 DODGE STATE 
+	-- 💨 DODGE STATE
 	-- =============================================
 	self.context.isDodging = false
 	self.context.dodgeCooldown = 0
-	self.context.dodgeCooldownMax = 1.0    -- segundos entre dodges
-	self.context.dodgeDuration = 0.4       -- duración de invulnerabilidad
-	self.context.dodgeSpeed = 30           -- velocidad del dodge direccional
-	self.context.dodgeDirection = 0        -- dirección del dodge (-1, 0, 1)
+	self.context.dodgeCooldownMax = 1.0 -- segundos entre dodges
+	self.context.dodgeDuration = 0.4 -- duración de invulnerabilidad
+	self.context.dodgeSpeed = 30 -- velocidad del dodge direccional
+	self.context.dodgeDirection = 0 -- dirección del dodge (-1, 0, 1)
 
 	return self
 end
 
+-- Asigna el oponente y actualiza los filtros de colisión
 function CharacterMotor:SetOpponent(opponentRoot)
 	self.context.opponentRoot = opponentRoot
 	self.context.opponent = opponentRoot and opponentRoot.Parent or nil
@@ -84,9 +86,14 @@ function CharacterMotor:SetOpponent(opponentRoot)
 	self.overlapParams.FilterDescendantsInstances = { self.context.character }
 end
 
+-- Cambia la dirección de movimiento (-1, 0, 1). Bloqueado durante hitstun/attack/knockdown
 function CharacterMotor:SetMoveDirection(dir)
-	if self.context.attackLocked or self.context.isInHitstun
-		or self.context.isKnockedDown or self.context.isInWakeup then
+	if
+		self.context.attackLocked
+		or self.context.isInHitstun
+		or self.context.isKnockedDown
+		or self.context.isInWakeup
+	then
 		return
 	end
 
@@ -94,6 +101,7 @@ function CharacterMotor:SetMoveDirection(dir)
 	--self:_updateBlockState()
 end
 
+-- Activa/desactiva crouch y transiciona el estado de la máquina
 function CharacterMotor:SetCrouch(state)
 	state = not not state
 
@@ -109,10 +117,12 @@ function CharacterMotor:SetCrouch(state)
 	end
 
 	if state then
-		if self.context.machine:GetState() ~= "Attack"
+		if
+			self.context.machine:GetState() ~= "Attack"
 			and self.context.machine:GetState() ~= "Hitstun"
 			and self.context.machine:GetState() ~= "Knockdown"
-			and self.context.machine:GetState() ~= "Wakeup" then
+			and self.context.machine:GetState() ~= "Wakeup"
+		then
 			if self.context.isBlocking or self.context.isCrouchBlocking then
 				self.context.machine:SetState("CrouchBlock")
 			else
@@ -160,11 +170,17 @@ end
 -- =============================================
 -- 🦅 JUMP MEJORADO
 -- =============================================
+-- Aplica velocity vertical directa si está en el suelo
 function CharacterMotor:Jump()
-	if self.context.isCrouching or self.context.isInHitstun
-		or self.context.attackLocked or self.context.isAirborne
-		or self.context.isKnockedDown or self.context.isInWakeup
-		or self.context.isInBlockstun then
+	if
+		self.context.isCrouching
+		or self.context.isInHitstun
+		or self.context.attackLocked
+		or self.context.isAirborne
+		or self.context.isKnockedDown
+		or self.context.isInWakeup
+		or self.context.isInBlockstun
+	then
 		return
 	end
 
@@ -182,11 +198,7 @@ function CharacterMotor:Jump()
 		-- Aplicar salto con velocity directa para control preciso
 		local root = self.context.root
 		local currentVel = root.AssemblyLinearVelocity
-		root.AssemblyLinearVelocity = Vector3.new(
-			currentVel.X,
-			self.context.jumpForce,
-			currentVel.Z
-		)
+		root.AssemblyLinearVelocity = Vector3.new(currentVel.X, self.context.jumpForce, currentVel.Z)
 
 		self.context.isAirborne = true
 		self.context.machine:SetState("Airborne")
@@ -196,6 +208,7 @@ end
 -- =============================================
 -- 🦅 DETECTAR ESTADO AÉREO
 -- =============================================
+-- Detecta transiciones suelo↔aire y maneja landing recovery
 function CharacterMotor:UpdateAirState()
 	local humanoid = self.context.humanoid
 	if not humanoid then
@@ -208,9 +221,11 @@ function CharacterMotor:UpdateAirState()
 	if isInAir and not wasInAir then
 		-- Acaba de despegar
 		self.context.isAirborne = true
-		if self.context.machine:GetState() ~= "Attack"
+		if
+			self.context.machine:GetState() ~= "Attack"
 			and self.context.machine:GetState() ~= "Hitstun"
-			and self.context.machine:GetState() ~= "Knockdown" then
+			and self.context.machine:GetState() ~= "Knockdown"
+		then
 			self.context.machine:SetState("Airborne")
 		end
 	elseif not isInAir and wasInAir then
@@ -243,7 +258,6 @@ function CharacterMotor:UpdateAirState()
 			else
 				self.context.machine:SetState("Idle")
 			end
-
 		elseif currentState == "Attack" then
 			-- Aterrizaje durante ataque aéreo:
 			-- Aplicar landing recovery (no puede actuar inmediatamente)
@@ -262,8 +276,7 @@ function CharacterMotor:UpdateAirState()
 				end
 
 				-- Si ya salimos de Attack pero seguimos locked
-				if self.context.attackLocked and not self.context.isInHitstun
-					and not self.context.isKnockedDown then
+				if self.context.attackLocked and not self.context.isInHitstun and not self.context.isKnockedDown then
 					self.context.attackLocked = false
 					self.context.currentAttack = nil
 					self.context.currentAnimationName = nil
@@ -287,6 +300,7 @@ function CharacterMotor:UpdateAirState()
 	self.context.wasAirborne = self.context.isAirborne
 end
 
+-- Gira el personaje hacia el oponente comparando posiciones X
 function CharacterMotor:UpdateFacing()
 	if not self.context.opponentRoot or not self.context.opponentRoot.Parent then
 		return
@@ -307,6 +321,7 @@ function CharacterMotor:UpdateFacing()
 	end
 end
 
+-- Determina si una Part debe bloquear el movimiento (colisión)
 function CharacterMotor:IsBlockingPart(part)
 	if not part or not part:IsA("BasePart") then
 		return false
@@ -346,6 +361,7 @@ function CharacterMotor:IsBlockingPart(part)
 	return true
 end
 
+-- Verifica si la posición targetX está libre de colisiones con GetPartBoundsInBox
 function CharacterMotor:CanMoveToX(targetX)
 	local root = self.context.root
 	local currentPos = root.Position
@@ -364,6 +380,7 @@ function CharacterMotor:CanMoveToX(targetX)
 	return true
 end
 
+-- Mueve currentX por deltaX. Si hay colisión, intenta en pasos más pequeños
 function CharacterMotor:MoveCurrentX(deltaX)
 	if math.abs(deltaX) <= 0.0001 then
 		return
@@ -389,6 +406,7 @@ function CharacterMotor:MoveCurrentX(deltaX)
 	end
 end
 
+-- Aplica movimiento horizontal según input del jugador y estado actual
 function CharacterMotor:UpdateWalkMovement(dt)
 	-- No mover durante knockdown o wakeup
 	if self.context.isKnockedDown or self.context.isInWakeup then
@@ -434,6 +452,7 @@ function CharacterMotor:UpdateWalkMovement(dt)
 	self:MoveCurrentX(walkDelta)
 end
 
+-- Aplica pushVelocityX cada frame con decay lineal hasta detenerse
 function CharacterMotor:UpdatePushback()
 	if math.abs(self.context.pushVelocityX or 0) > 0.01 then
 		local delta = self.context.pushVelocityX
@@ -448,6 +467,7 @@ function CharacterMotor:UpdatePushback()
 	end
 end
 
+-- Escribe el CFrame final: currentX en X, physics Y, lockedZ, rotación hacia oponente
 function CharacterMotor:ApplyPlaneLockAndRotation()
 	local root = self.context.root
 	local pos = root.Position
@@ -467,6 +487,7 @@ function CharacterMotor:ApplyPlaneLockAndRotation()
 	root.CFrame = CFrame.new(finalX, finalY, finalZ) * CFrame.Angles(0, angleY, 0)
 end
 
+-- Inicia empuje por golpe: velocity = direction * pushback * 0.12, decay = 12%
 function CharacterMotor:ApplyPushReaction(pushback, direction, duration)
 	if pushback <= 0 then
 		return
@@ -481,10 +502,16 @@ function CharacterMotor:StopPushReaction()
 	self.context.pushDecay = 0
 end
 
+-- Inicia dodge direccional con i-frames. Retorna true si se activó
 function CharacterMotor:Dodge()
-	if self.context.isDodging or self.context.isInHitstun
-		or self.context.attackLocked or self.context.isKnockedDown
-		or self.context.isInWakeup or self.context.isInBlockstun then
+	if
+		self.context.isDodging
+		or self.context.isInHitstun
+		or self.context.attackLocked
+		or self.context.isKnockedDown
+		or self.context.isInWakeup
+		or self.context.isInBlockstun
+	then
 		return false
 	end
 
@@ -506,6 +533,7 @@ function CharacterMotor:Dodge()
 	return true
 end
 
+-- Decrementa cooldown del dodge y aplica movimiento si está activo
 function CharacterMotor:UpdateDodge(dt)
 	-- Cooldown
 	if self.context.dodgeCooldown > 0 then
@@ -519,24 +547,45 @@ function CharacterMotor:UpdateDodge(dt)
 	end
 end
 
-
+-- Loop principal del motor. Durante hit reaction cede CFrame al atacante (NetworkOwner)
 function CharacterMotor:Update(dt)
+	local root = self.context.root
+
+	-- Mientras estamos en una reacción de golpe (hitstun/knockdown/wakeup/blockstun),
+	-- el atacante tiene NetworkOwnership y controla nuestra posición vía predicción.
+	-- Solo leemos root.Position.X para mantener currentX sincronizado.
+	-- NO escribimos CFrame para no pelear con la autoridad del atacante.
+	local isInHitReaction = self.context.isInHitstun
+		or self.context.isKnockedDown
+		or self.context.isInWakeup
+		or self.context.isInBlockstun
+
 	-- HITSTOP: Congelar todo
 	if HitstopService:IsInHitstop() then
-		local root = self.context.root
 		local velocity = root.AssemblyLinearVelocity
 		root.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
-		self:ApplyPlaneLockAndRotation()
+		if isInHitReaction then
+			-- Seguir la posición autoritativa del atacante
+			self.context.currentX = root.Position.X
+		else
+			self:ApplyPlaneLockAndRotation()
+		end
 		return
 	end
 
-	local root = self.context.root
 	local velocity = root.AssemblyLinearVelocity
-
 	root.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
 
 	self:UpdateAirState()
 	self:UpdateFacing()
+
+	if isInHitReaction then
+		-- Seguir la posición autoritativa del atacante sin escribir CFrame
+		self.context.currentX = root.Position.X
+		self:UpdateDodge(dt)
+		return
+	end
+
 	self:UpdateWalkMovement(dt)
 	self:UpdatePushback()
 	self:UpdateDodge(dt)

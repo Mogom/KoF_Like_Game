@@ -9,9 +9,11 @@ local Hitbox = require(Combat:WaitForChild("Hitbox"))
 local SoundManager = require(Combat:WaitForChild("SoundManager"))
 local HitstopService = require(Combat:WaitForChild("HitstopService"))
 
+-- Controlador de combate: ataques, hit reactions, hitstun, knockdown, predicción del oponente
 local CombatController = {}
 CombatController.__index = CombatController
 
+-- Inicializa estados de combate y predicción del oponente
 function CombatController.new(context, animationController)
 	local self = setmetatable({}, CombatController)
 
@@ -46,6 +48,7 @@ function CombatController.new(context, animationController)
 	return self
 end
 
+-- Escucha cambios en HitResultId (set por el servidor) para detectar hits entrantes
 function CombatController:_bindHitListener()
 	self.context.character:SetAttribute("HitCounter", self.context.character:GetAttribute("HitCounter") or 0)
 	self.context.character:SetAttribute("HitResultId", self.context.character:GetAttribute("HitResultId") or 0)
@@ -98,6 +101,7 @@ end
 -- =============================================
 -- 🛡️ PROCESAR HIT ENTRANTE: ¿Bloqueo o daño?
 -- =============================================
+-- Evalúa si el hit fue bloqueado o no, y aplica la reacción correspondiente
 function CombatController:ProcessIncomingHit(hitData)
 	local blocked = self:_checkBlock(hitData)
 
@@ -108,11 +112,16 @@ function CombatController:ProcessIncomingHit(hitData)
 	end
 end
 
+-- Verifica si estamos en posición de bloqueo y si el tipo de guardia cubre el ataque
 function CombatController:_checkBlock(hitData)
 	-- No se puede bloquear en el aire, durante hitstun, ataque, knockdown
-	if self.context.isAirborne or self.context.isInHitstun
-		or self.context.attackLocked or self.context.isKnockedDown
-		or self.context.isInWakeup then
+	if
+		self.context.isAirborne
+		or self.context.isInHitstun
+		or self.context.attackLocked
+		or self.context.isKnockedDown
+		or self.context.isInWakeup
+	then
 		return false
 	end
 
@@ -155,6 +164,7 @@ end
 -- =============================================
 -- 🛡️ BLOCK REACTION
 -- =============================================
+-- Reacción al bloquear: chip damage, hitstop reducido, blockstun + pushback
 function CombatController:ApplyBlockReaction(hitData)
 	self.context.blockstunReactionId = (self.context.blockstunReactionId or 0) + 1
 	local reactionId = self.context.blockstunReactionId
@@ -206,8 +216,13 @@ function CombatController:ApplyBlockReaction(hitData)
 
 			self.context.attackLockedX = nil
 
+			-- Re-sincronizar posición y limpiar pushback residual
+			self.context.currentX = self.context.root.Position.X
+			self.context.pushVelocityX = 0
+			self.context.pushDecay = 0
+
 			self.context.isInBlockstun = false
-			
+
 			if _G.ForceResolveMovement then
 				_G.ForceResolveMovement()
 			end
@@ -235,6 +250,7 @@ end
 -- =============================================
 -- 💥 HIT REACTION (con knockdown y launch)
 -- =============================================
+-- Reacción al recibir daño: hitstop → pushback → hitstun → (knockdown opcional)
 function CombatController:ApplyHitReaction(hitData)
 	if not hitData then
 		return
@@ -252,7 +268,7 @@ function CombatController:ApplyHitReaction(hitData)
 	self.context.isBlocking = false
 	self.context.isCrouchBlocking = false
 	self.context.isInBlockstun = false
-	
+
 	-- Sincronizar currentX con posición real antes de entrar en hitstun
 	-- Esto es el ÚNICO momento donde sincronizamos, no cada frame
 	self.context.currentX = self.context.root.Position.X
@@ -301,12 +317,18 @@ function CombatController:ApplyHitReaction(hitData)
 	end
 end
 
+-- Post-hitstop: sincroniza currentX, aplica pushback, programa salida de hitstun
 function CombatController:_applyPostHitstopPushback(hitData, reactionId, hitstunDuration, knockdown)
+	-- Re-sincronizar currentX con la posición física real antes de aplicar pushback.
+	-- Esto garantiza que el pushback arranque desde la posición exacta del personaje,
+	-- evitando drift acumulado durante el hitstop.
+	self.context.currentX = self.context.root.Position.X
+
 	local pushback = hitData.Pushback or 0
 	if pushback > 0 and self.context.motor and self.context.motor.ApplyPushReaction then
 		local attackerX = hitData.AttackerPositionX or 0
 
-		local victimX = self.context.root.Position.X
+		local victimX = self.context.currentX
 		local direction = victimX >= attackerX and 1 or -1
 
 		self.context.motor:ApplyPushReaction(pushback, direction, hitstunDuration)
@@ -319,6 +341,13 @@ function CombatController:_applyPostHitstopPushback(hitData, reactionId, hitstun
 
 		-- Limpiar attack lock
 		self.context.attackLockedX = nil
+
+		-- Re-sincronizar currentX y limpiar pushback residual antes de
+		-- devolver control al motor. Esto garantiza que no haya salto
+		-- de posición al retomar autoridad sobre CFrame.
+		self.context.currentX = self.context.root.Position.X
+		self.context.pushVelocityX = 0
+		self.context.pushDecay = 0
 
 		self.context.isInHitstun = false
 		self.context.isInAirHitstun = false
@@ -341,6 +370,7 @@ end
 -- =============================================
 -- 💀 KNOCKDOWN SYSTEM
 -- =============================================
+-- Inicia estado de knockdown (caído) con timer para despertar
 function CombatController:_startKnockdown(reactionId)
 	self.context.knockdownReactionId = (self.context.knockdownReactionId or 0) + 1
 	local knockdownId = self.context.knockdownReactionId
@@ -369,6 +399,7 @@ function CombatController:_startKnockdown(reactionId)
 	end)
 end
 
+-- Animación de levantarse. Al terminar, libera control y sincroniza posición
 function CombatController:_startWakeup(knockdownId)
 	self.context.isKnockedDown = false
 	self.context.isInWakeup = true
@@ -385,6 +416,11 @@ function CombatController:_startWakeup(knockdownId)
 		end
 
 		self.context.attackLockedX = nil
+
+		-- Re-sincronizar posición y limpiar pushback residual
+		self.context.currentX = self.context.root.Position.X
+		self.context.pushVelocityX = 0
+		self.context.pushDecay = 0
 
 		self.context.isInWakeup = false
 		self.context.attackLocked = false
@@ -406,6 +442,7 @@ end
 -- STATE REGISTRATION
 -- =============================================
 
+-- Ajusta transparencia del personaje (usado para efecto visual del dodge)
 function CombatController:_setCharacterTransparency(alpha)
 	for _, part in pairs(self.context.character:GetDescendants()) do
 		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Name ~= "HurtboxBody" then
@@ -414,7 +451,7 @@ function CombatController:_setCharacterTransparency(alpha)
 	end
 end
 
-
+-- Registra estados de combate en la StateMachine (Attack, Hitstun, Dodge, etc.)
 function CombatController:RegisterStates(machine)
 	machine:AddState("Attack", {
 		Enter = function()
@@ -441,7 +478,7 @@ function CombatController:RegisterStates(machine)
 			if attack.SoundEffect then
 				SoundManager.PlaySound(attack.SoundEffect, self.context.root.Position, attack.SoundVolume or 0.5)
 			end
-			
+
 			-- =============================================
 			-- 🏃 ATTACK DASH: Desplazamiento durante ataque
 			-- =============================================
@@ -574,7 +611,7 @@ function CombatController:RegisterStates(machine)
 
 				self:ResolvePostActionState(true)
 			end)
-		end
+		end,
 	})
 
 	machine:AddState("Hitstun", {
@@ -654,7 +691,7 @@ function CombatController:RegisterStates(machine)
 	--		end
 	--	end,
 	--})
-	
+
 	-- =============================================
 	-- 💨 DODGE STATE (estilo Brawlhalla)
 	-- =============================================
@@ -762,6 +799,7 @@ function CombatController:RegisterStates(machine)
 	})
 end
 
+-- Determina el estado correcto post-acción según flags actuales
 function CombatController:ResolvePostActionState(forceAnimationRefresh)
 	if self.context.isInHitstun then
 		self.context.machine:SetState("Hitstun")
@@ -818,10 +856,15 @@ end
 -- =============================================
 -- 🦅 REQUEST ATTACK (con soporte aéreo)
 -- =============================================
+-- Procesa solicitud de ataque: verifica estado, mapea crouch/air, inicia combo
 function CombatController:RequestAttack(type)
-	if self.context.attackLocked or self.context.isInHitstun
-		or self.context.isKnockedDown or self.context.isInWakeup
-		or self.context.isInBlockstun then
+	if
+		self.context.attackLocked
+		or self.context.isInHitstun
+		or self.context.isKnockedDown
+		or self.context.isInWakeup
+		or self.context.isInBlockstun
+	then
 		return
 	end
 
@@ -943,6 +986,7 @@ end
 -- =============================================
 -- PREDICCIÓN LOCAL DEL OPONENTE
 -- =============================================
+-- Predicción local: aplica hitstop + pushback en el oponente ANTES de la confirmación del server
 function CombatController:ApplyLocalHitPrediction(victimCharacter, attackData)
 	if not victimCharacter or not victimCharacter:IsA("Model") then
 		return
@@ -995,7 +1039,14 @@ function CombatController:ApplyLocalHitPrediction(victimCharacter, attackData)
 	end
 end
 
-function CombatController:_startOpponentPredictedPushback(pushback, hitstunDuration, predictionId, knockdown, opponentDir)
+-- Inicia pushback predicho del oponente post-hitstop con decay
+function CombatController:_startOpponentPredictedPushback(
+	pushback,
+	hitstunDuration,
+	predictionId,
+	knockdown,
+	opponentDir
+)
 	if pushback > 0 then
 		local attackerX = self.context.root.Position.X
 		local victimX = self.opponentCurrentX or 0
@@ -1041,6 +1092,7 @@ function CombatController:_startOpponentPredictedPushback(pushback, hitstunDurat
 	end)
 end
 
+-- Mueve visualmente al oponente durante predicción: pushback + lock CFrame
 function CombatController:UpdateOpponentPrediction()
 	if HitstopService:IsInHitstop() then
 		if self.opponentIsInPredictedHitstun and self.opponentCurrentX then
@@ -1051,11 +1103,8 @@ function CombatController:UpdateOpponentPrediction()
 				local faceRight = myX >= self.opponentCurrentX
 				local angleY = faceRight and math.rad(-90) or math.rad(90)
 
-				opponentRoot.CFrame = CFrame.new(
-					self.opponentCurrentX,
-					pos.Y,
-					self.context.lockedZ
-				) * CFrame.Angles(0, angleY, 0)
+				opponentRoot.CFrame = CFrame.new(self.opponentCurrentX, pos.Y, self.context.lockedZ)
+					* CFrame.Angles(0, angleY, 0)
 			end
 		end
 		return
@@ -1078,13 +1127,18 @@ function CombatController:UpdateOpponentPrediction()
 					overlapParams.FilterType = Enum.RaycastFilterType.Exclude
 					overlapParams.FilterDescendantsInstances = {
 						self.context.character,
-						self.context.opponent or {}
+						self.context.opponent or {},
 					}
 					overlapParams.MaxParts = 20
 
 					local parts = workspace:GetPartBoundsInBox(testCFrame, testSize, overlapParams)
 					for _, part in ipairs(parts) do
-						if part:IsA("BasePart") and part.CanCollide and part.Name ~= "HurtboxBody" and part.Name ~= "DebugHitbox" then
+						if
+							part:IsA("BasePart")
+							and part.CanCollide
+							and part.Name ~= "HurtboxBody"
+							and part.Name ~= "DebugHitbox"
+						then
 							canMove = false
 							break
 						end
@@ -1116,11 +1170,8 @@ function CombatController:UpdateOpponentPrediction()
 			local faceRight = myX >= self.opponentCurrentX
 			local angleY = faceRight and math.rad(-90) or math.rad(90)
 
-			opponentRoot.CFrame = CFrame.new(
-				self.opponentCurrentX,
-				pos.Y,
-				self.context.lockedZ
-			) * CFrame.Angles(0, angleY, 0)
+			opponentRoot.CFrame = CFrame.new(self.opponentCurrentX, pos.Y, self.context.lockedZ)
+				* CFrame.Angles(0, angleY, 0)
 		end
 	else
 		if self.context.opponentRoot and self.context.opponentRoot.Parent then
@@ -1129,6 +1180,7 @@ function CombatController:UpdateOpponentPrediction()
 	end
 end
 
+-- Update por frame: cuenta attackFrames, cancel window, predicción oponente
 function CombatController:Update(dt)
 	if HitstopService:IsInHitstop() then
 		self:UpdateOpponentPrediction()
@@ -1141,7 +1193,10 @@ function CombatController:Update(dt)
 
 	local attack = self.context.currentAttack
 	if attack and attack.CancelWindow then
-		if self.context.attackFrame >= attack.CancelWindow.Start and self.context.attackFrame <= attack.CancelWindow.End then
+		if
+			self.context.attackFrame >= attack.CancelWindow.Start
+			and self.context.attackFrame <= attack.CancelWindow.End
+		then
 			self.context.canCancel = true
 		else
 			self.context.canCancel = false

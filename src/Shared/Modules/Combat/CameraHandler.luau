@@ -5,6 +5,7 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
+-- Cámara 2.5D lateral: zoom dinámico según distancia entre jugadores
 local CameraHandler = {}
 
 local CAMERA = {
@@ -29,6 +30,7 @@ local humanoidRootPart = nil
 UserInputService.MouseDeltaSensitivity = 0
 camera.CameraType = Enum.CameraType.Scriptable
 
+-- Vincula character local y su root para rastreo de cámara
 local function bindCharacter(character)
 	currentCharacter = character
 	if currentCharacter then
@@ -44,6 +46,7 @@ player.CharacterAdded:Connect(function(character)
 	bindCharacter(character)
 end)
 
+-- Busca el oponente (dummy o jugador) para calcular punto medio
 local function findOpponent()
 	if opponent and opponentRoot and opponentRoot.Parent then
 		return opponent, opponentRoot
@@ -66,6 +69,7 @@ local function findOpponent()
 	return nil, nil
 end
 
+-- Calcula el punto medio entre ambos jugadores en X
 local function getCenterPoint()
 	if not humanoidRootPart or not humanoidRootPart.Parent then
 		return nil
@@ -85,6 +89,7 @@ local function getCenterPoint()
 	return playerPos
 end
 
+-- Calcula zoom dinámico basado en distancia entre jugadores
 local function calculateZoom()
 	if not CAMERA.zoomEnabled then
 		return CAMERA.baseDistance
@@ -111,6 +116,7 @@ local function calculateZoom()
 	return CAMERA.minZoom + (normalized * (CAMERA.maxZoom - CAMERA.minZoom))
 end
 
+-- Actualiza posición y orientación de la cámara cada frame
 local function updateCamera(dt)
 	if not humanoidRootPart or not humanoidRootPart.Parent then
 		return
@@ -128,17 +134,9 @@ local function updateCamera(dt)
 	local targetZoom = calculateZoom()
 	currentZoom = currentZoom + ((targetZoom - currentZoom) * CAMERA.zoomSmooth)
 
-	local lookTarget = Vector3.new(
-		centerPoint.X,
-		centerPoint.Y + CAMERA.lookAtOffset,
-		centerPoint.Z
-	)
+	local lookTarget = Vector3.new(centerPoint.X, centerPoint.Y + CAMERA.lookAtOffset, centerPoint.Z)
 
-	local cameraOffset = Vector3.new(
-		0,
-		CAMERA.baseHeight,
-		currentZoom
-	)
+	local cameraOffset = Vector3.new(0, CAMERA.baseHeight, currentZoom)
 
 	local cameraPosition = centerPoint + cameraOffset
 	local newCFrame = CFrame.lookAt(cameraPosition, lookTarget)
@@ -156,6 +154,7 @@ task.spawn(function()
 	end
 end)
 
+-- Setea el oponente para cálculo de cámara
 function CameraHandler:SetOpponent(opponentCharacter)
 	if opponentCharacter and opponentCharacter:FindFirstChild("HumanoidRootPart") then
 		opponent = opponentCharacter
@@ -167,19 +166,23 @@ function CameraHandler:SetOpponent(opponentCharacter)
 	return false
 end
 
+-- Modifica distancia base de la cámara al eje Z
 function CameraHandler:SetDistance(distance)
 	CAMERA.baseDistance = distance
 	currentZoom = distance
 end
 
+-- Modifica altura base de la cámara
 function CameraHandler:SetHeight(height)
 	CAMERA.baseHeight = height
 end
 
+-- Activa o desactiva el zoom dinámico
 function CameraHandler:SetDynamicZoom(enabled)
 	CAMERA.zoomEnabled = enabled
 end
 
+-- Restaura la cámara al modo por defecto de Roblox
 function CameraHandler:Reset()
 	CAMERA.baseDistance = 12
 	CAMERA.baseHeight = 1.5

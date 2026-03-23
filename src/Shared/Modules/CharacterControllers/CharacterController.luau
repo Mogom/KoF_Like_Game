@@ -14,9 +14,11 @@ local RemoteEvents = Remotes:WaitForChild("Events")
 local SetOpponentEvent = RemoteEvents:WaitForChild("SetOpponent")
 local ReplicateAnimationEvent = RemoteEvents:WaitForChild("ReplicateAnimation")
 
+-- Orquestador principal: crea Motor, Combat, Animation y corre el loop RenderStepped
 local CharacterController = {}
 CharacterController.__index = CharacterController
 
+-- Busca al oponente más cercano (dummy o jugador)
 local function findOpponent()
 	local dummy = workspace:FindFirstChild("Enemy") or workspace:FindFirstChild("TrainingDummy")
 	if dummy and dummy:FindFirstChild("HumanoidRootPart") then
@@ -38,6 +40,7 @@ local function findOpponent()
 	return nil
 end
 
+-- Constructor: inicializa context, sub-controladores y conecta RenderStepped + eventos
 function CharacterController.new(character, machine)
 	local self = setmetatable({}, CharacterController)
 
@@ -140,7 +143,7 @@ function CharacterController.new(character, machine)
 					body.Size = Vector3.new(ox, oy, oz)
 				end
 			end
-		end
+		end,
 	}
 
 	self.character = context.character
@@ -238,6 +241,7 @@ function CharacterController.new(character, machine)
 	return self
 end
 
+-- Sincroniza estado público (isCrouching, isBlocking, etc.) via Attributes
 function CharacterController:_syncPublicState()
 	self.character = self.context.character
 	self.humanoid = self.context.humanoid
@@ -255,6 +259,7 @@ function CharacterController:_syncPublicState()
 	self.opponentRoot = self.context.opponentRoot
 end
 
+-- Registra estados base en la StateMachine (Idle, Walk, CrouchIdle, Jump, Fall, Land)
 function CharacterController:_registerBaseStates()
 	self.context.machine:AddState("Idle", {
 		Enter = function()
@@ -262,8 +267,12 @@ function CharacterController:_registerBaseStates()
 		end,
 
 		Update = function()
-			if self.context.attackLocked or self.context.isInHitstun
-				or self.context.isKnockedDown or self.context.isInWakeup then
+			if
+				self.context.attackLocked
+				or self.context.isInHitstun
+				or self.context.isKnockedDown
+				or self.context.isInWakeup
+			then
 				return
 			end
 
@@ -285,7 +294,7 @@ function CharacterController:_registerBaseStates()
 			if math.abs(self.context.moveDirection) > 0.01 then
 				self.context.machine:SetState("Walk")
 			end
-		end
+		end,
 	})
 
 	self.context.machine:AddState("Walk", {
@@ -294,8 +303,12 @@ function CharacterController:_registerBaseStates()
 		end,
 
 		Update = function()
-			if self.context.attackLocked or self.context.isInHitstun
-				or self.context.isKnockedDown or self.context.isInWakeup then
+			if
+				self.context.attackLocked
+				or self.context.isInHitstun
+				or self.context.isKnockedDown
+				or self.context.isInWakeup
+			then
 				return
 			end
 
@@ -317,7 +330,7 @@ function CharacterController:_registerBaseStates()
 			if math.abs(self.context.moveDirection) < 0.01 then
 				self.context.machine:SetState("Idle")
 			end
-		end
+		end,
 	})
 
 	self.context.machine:AddState("Crouch", {
@@ -336,8 +349,12 @@ function CharacterController:_registerBaseStates()
 		end,
 
 		Update = function()
-			if self.context.attackLocked or self.context.isInHitstun
-				or self.context.isKnockedDown or self.context.isInWakeup then
+			if
+				self.context.attackLocked
+				or self.context.isInHitstun
+				or self.context.isKnockedDown
+				or self.context.isInWakeup
+			then
 				return
 			end
 
@@ -361,20 +378,20 @@ function CharacterController:_registerBaseStates()
 			if self.context.hurtbox and self.context.hurtbox.Reset then
 				self.context.hurtbox:Reset()
 			end
-		end
+		end,
 	})
 end
 
+-- Solicita un dodge si el estado lo permite
 function CharacterController:Dodge()
-	if self.context.isInHitstun or self.context.isKnockedDown
-		or self.context.isInWakeup or self.context.isDodging then
+	if self.context.isInHitstun or self.context.isKnockedDown or self.context.isInWakeup or self.context.isDodging then
 		return
 	end
 
 	self.motor:Dodge()
 end
 
-
+-- Asigna un oponente y lo pasa al motor y combat controller
 function CharacterController:SetOpponent(opponentRoot)
 	if not opponentRoot or not opponentRoot:IsA("BasePart") then
 		self.context.opponentRoot = nil
@@ -392,58 +409,72 @@ function CharacterController:SetOpponent(opponentRoot)
 	self:_syncPublicState()
 end
 
+-- Retorna el Character del oponente actual
 function CharacterController:GetOpponent()
 	return self.context.opponent
 end
 
+-- Retorna el HumanoidRootPart del oponente
 function CharacterController:GetOpponentRoot()
 	return self.context.opponentRoot
 end
 
+-- Retorna el HumanoidRootPart propio
 function CharacterController:GetRoot()
 	return self.context.root
 end
 
+-- Retorna el Humanoid propio
 function CharacterController:GetHumanoid()
 	return self.context.humanoid
 end
 
+-- Retorna el estado actual de la StateMachine
 function CharacterController:GetState()
 	return self.context.machine:GetState()
 end
 
+-- Retorna true si está ejecutando un ataque o en recovery
 function CharacterController:IsAttackLocked()
 	return self.context.attackLocked
 end
 
+-- Retorna true si el personaje está agachado
 function CharacterController:IsCrouching()
 	return self.context.isCrouching
 end
 
+-- Retorna true si está en hitstun
 function CharacterController:IsInHitstun()
 	return self.context.isInHitstun
 end
 
+-- Retorna true si está bloqueando
 function CharacterController:IsBlocking()
 	return self.context.isBlocking or self.context.isCrouchBlocking
 end
 
+-- Retorna true si está en el aire
 function CharacterController:IsAirborne()
 	return self.context.isAirborne
 end
 
+-- Retorna true si está en knockdown
 function CharacterController:IsKnockedDown()
 	return self.context.isKnockedDown
 end
 
+-- Retorna la dirección de movimiento actual (-1, 0 o 1)
 function CharacterController:GetMoveDirection()
 	return self.context.moveDirection
 end
 
+-- Retorna la dirección hacia donde mira el personaje (-1 o 1)
 function CharacterController:GetFacingDirection()
 	return self.context.currentDirection
 end
 
+-- Setea dirección de movimiento y actualiza el motor
 function CharacterController:SetMoveDirection(dir)
 	if self.context.isInHitstun or self.context.isKnockedDown or self.context.isInWakeup then
 		return
@@ -454,6 +485,7 @@ function CharacterController:SetMoveDirection(dir)
 	self:_syncPublicState()
 end
 
+-- Setea estado de agachado y actualiza contexto + motor
 function CharacterController:SetCrouch(state)
 	if self.context.isInHitstun or self.context.isKnockedDown or self.context.isInWakeup then
 		return
@@ -464,15 +496,21 @@ function CharacterController:SetCrouch(state)
 	self:_syncPublicState()
 end
 
+-- Solicita un salto al motor si el estado lo permite
 function CharacterController:Jump()
-	if self.context.isInHitstun or self.context.isKnockedDown
-		or self.context.isInWakeup or self.context.isInBlockstun then
+	if
+		self.context.isInHitstun
+		or self.context.isKnockedDown
+		or self.context.isInWakeup
+		or self.context.isInBlockstun
+	then
 		return
 	end
 
 	self.motor:Jump()
 end
 
+-- Delega solicitud de ataque al CombatController
 function CharacterController:RequestAttack(type)
 	if self.context.isInHitstun or self.context.isKnockedDown or self.context.isInWakeup then
 		return

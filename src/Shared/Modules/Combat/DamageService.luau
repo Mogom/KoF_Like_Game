@@ -3,8 +3,10 @@ local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local RemoteEvents = Remotes:WaitForChild("Events")
 local ApplyDamageEvent = RemoteEvents:WaitForChild("ApplyDamage")
 
+-- Wrapper cliente: envía FireServer con datos de ataque al DamageHandler
 local DamageService = {}
 
+-- Envía solicitud de daño al servidor
 function DamageService.ApplyHit(attackerCharacter, victimCharacter, attackData)
 	if not attackerCharacter or not victimCharacter or not attackData then
 		warn("❌ DamageService.ApplyHit invalid args")

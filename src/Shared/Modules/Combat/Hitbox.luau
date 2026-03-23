@@ -5,9 +5,11 @@ local Combat = Modules:WaitForChild("Combat")
 
 local DamageService = require(Combat:WaitForChild("DamageService"))
 
+-- Sistema de hitbox: crea Part temporal y detecta colisión con HurtboxBody
 local Hitbox = {}
 Hitbox.__index = Hitbox
 
+-- Constructor: posiciona la hitbox relativa al root con offset y tamaño
 function Hitbox.new(root, data)
 	local self = setmetatable({}, Hitbox)
 
@@ -30,6 +32,7 @@ function Hitbox.new(root, data)
 	return self
 end
 
+-- Chequea colisión con GetPartBoundsInBox y reporta hit si encuentra HurtboxBody
 function Hitbox:Update()
 	self.part.CFrame = self.root.CFrame * CFrame.new(self.offset)
 
@@ -60,6 +63,7 @@ function Hitbox:Update()
 	end
 end
 
+-- Destruye la hitbox visual
 function Hitbox:Destroy()
 	if self.part then
 		self.part:Destroy()

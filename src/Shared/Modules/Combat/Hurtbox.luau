@@ -1,6 +1,8 @@
+-- Hurtbox: parte invisible welded al root que sirve como zona de daño recibido
 local Hurtbox = {}
 Hurtbox.__index = Hurtbox
 
+-- Constructor: crea hurtbox para el personaje dado
 function Hurtbox.new(character)
 	local self = setmetatable({}, Hurtbox)
 
@@ -13,6 +15,7 @@ function Hurtbox.new(character)
 	return self
 end
 
+-- Crea la Part HurtboxBody y la weldea al root
 function Hurtbox:Create()
 	if self.character:FindFirstChild("HurtboxBody") then
 		table.insert(self.parts, self.character.HurtboxBody)
@@ -41,10 +44,12 @@ function Hurtbox:Create()
 	table.insert(self.parts, body)
 end
 
+-- Retorna las partes de la hurtbox
 function Hurtbox:GetParts()
 	return self.parts
 end
 
+-- Escala la altura de la hurtbox (usado para crouch)
 function Hurtbox:SetHeightScale(scale)
 	if not self.parts or #self.parts == 0 then
 		return
@@ -56,13 +61,10 @@ function Hurtbox:SetHeightScale(scale)
 		self.originalSize = body.Size
 	end
 
-	body.Size = Vector3.new(
-		self.originalSize.X * 1.2,
-		self.originalSize.Y * scale,
-		self.originalSize.Z
-	)
+	body.Size = Vector3.new(self.originalSize.X * 1.2, self.originalSize.Y * scale, self.originalSize.Z)
 end
 
+-- Restaura tamaño original de la hurtbox
 function Hurtbox:Reset()
 	if not self.parts or #self.parts == 0 or not self.originalSize then
 		return

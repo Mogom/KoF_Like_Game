@@ -1,3 +1,4 @@
+-- Cliente: gestiona UI (menú principal + HUD), conecta game modes
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
@@ -33,6 +34,7 @@ local currentHUD = nil
 -- 🎯 CALLBACK: Training Mode
 -- ============================================
 
+-- Callback al seleccionar Training: oculta menú, muestra HUD, fire server
 local function onTrainingClick()
 	if not mainMenu then
 		warn("❌ mainMenu is nil!")
@@ -54,6 +56,7 @@ end
 -- ⚔️ CALLBACK: Versus Mode
 -- ============================================
 
+-- Callback al seleccionar Versus: oculta menú, muestra HUD, fire server
 local function onVersusClick()
 	if not mainMenu then
 		warn("❌ mainMenu is nil!")
@@ -75,10 +78,9 @@ end
 -- 🎨 CREAR MENÚ
 -- ============================================
 
-
 mainMenu = MainMenuComponent.new(playerGui, {
 	onTrainingClick = onTrainingClick,
-	onVersusClick = onVersusClick
+	onVersusClick = onVersusClick,
 })
 
 if mainMenu then

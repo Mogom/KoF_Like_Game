@@ -11,11 +11,13 @@ local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local RemoteEvents = Remotes:WaitForChild("Events")
 local ReplicateAnimationEvent = RemoteEvents:WaitForChild("ReplicateAnimation")
 
+-- Controlador de animaciones: carga, reproduce y replica animaciones con sufijo direccional (_R/_L)
 local AnimationController = {}
 AnimationController.__index = AnimationController
 
 local DEBUG_ANIMATION = false
 
+-- Carga un KeyframeSequence y retorna el AnimationTrack
 local function loadSequence(animator, sequence)
 	local anim = Instance.new("Animation")
 	anim.AnimationId = KeyframeSequenceProvider:RegisterKeyframeSequence(sequence)
@@ -31,6 +33,7 @@ local function tryLoadSequence(animator, folder, name)
 	return nil
 end
 
+-- Constructor: carga todas las animaciones del personaje con variantes _R y _L
 function AnimationController.new(context)
 	local self = setmetatable({}, AnimationController)
 
@@ -66,16 +69,16 @@ function AnimationController.new(context)
 
 		HurtLight_R = loadSequence(self.animator, AnimationsTest.HurtLight_R),
 		HurtLight_L = loadSequence(self.animator, AnimationsTest.HurtLight_R),
-		
+
 		Crouch_R = loadSequence(self.animator, AnimationsTest.Crouch_R),
 		Crouch_L = loadSequence(self.animator, AnimationsTest.Crouch_R),
-		
+
 		CrouchWalk_R = loadSequence(self.animator, AnimationsTest.CrouchWalk_R),
 		CrouchWalk_L = loadSequence(self.animator, AnimationsTest.CrouchWalk_R),
-		
+
 		CrouchPunch_R = loadSequence(self.animator, AnimationsTest.CrouchPunch_R),
 		CrouchPunch_L = loadSequence(self.animator, AnimationsTest.CrouchPunch_R),
-		
+
 		CrouchHeavy_R = loadSequence(self.animator, AnimationsTest.Punch3_R),
 		CrouchHeavy_L = loadSequence(self.animator, AnimationsTest.Punch3_L),
 	}
@@ -98,24 +101,18 @@ function AnimationController.new(context)
 	--	or self.animations.Block_R
 	--self.animations.BlockHit_L = tryLoadSequence(self.animator, AnimationsTest, "BlockHit_L")
 	--	or self.animations.Block_L
-	
+
 	-- Dodge
-	self.animations.Dodge_R = tryLoadSequence(self.animator, AnimationsTest, "Dodge_R")
-		or self.animations.Idle_R
-	self.animations.Dodge_L = tryLoadSequence(self.animator, AnimationsTest, "Dodge_L")
-		or self.animations.Idle_L
+	self.animations.Dodge_R = tryLoadSequence(self.animator, AnimationsTest, "Dodge_R") or self.animations.Idle_R
+	self.animations.Dodge_L = tryLoadSequence(self.animator, AnimationsTest, "Dodge_L") or self.animations.Idle_L
 
 	-- Jump
-	self.animations.Jump_R = tryLoadSequence(self.animator, AnimationsTest, "Jump_R")
-		or self.animations.Idle_R
-	self.animations.Jump_L = tryLoadSequence(self.animator, AnimationsTest, "Jump_L")
-		or self.animations.Idle_L
+	self.animations.Jump_R = tryLoadSequence(self.animator, AnimationsTest, "Jump_R") or self.animations.Idle_R
+	self.animations.Jump_L = tryLoadSequence(self.animator, AnimationsTest, "Jump_L") or self.animations.Idle_L
 
 	-- Air attacks
-	self.animations.AirPunch_R = tryLoadSequence(self.animator, AnimationsTest, "AirPunch_R")
-		or self.animations.Punch_R
-	self.animations.AirPunch_L = tryLoadSequence(self.animator, AnimationsTest, "AirPunch_L")
-		or self.animations.Punch_L
+	self.animations.AirPunch_R = tryLoadSequence(self.animator, AnimationsTest, "AirPunch_R") or self.animations.Punch_R
+	self.animations.AirPunch_L = tryLoadSequence(self.animator, AnimationsTest, "AirPunch_L") or self.animations.Punch_L
 
 	self.animations.AirHeavy_R = tryLoadSequence(self.animator, AnimationsTest, "AirHeavy_R")
 		or self.animations.HeavyPunch_R
@@ -135,27 +132,23 @@ function AnimationController.new(context)
 		or self.animations.HurtLight_L
 
 	-- Wakeup (levantarse)
-	self.animations.Wakeup_R = tryLoadSequence(self.animator, AnimationsTest, "Wakeup_R")
-		or self.animations.Idle_R
-	self.animations.Wakeup_L = tryLoadSequence(self.animator, AnimationsTest, "Wakeup_L")
-		or self.animations.Idle_L
+	self.animations.Wakeup_R = tryLoadSequence(self.animator, AnimationsTest, "Wakeup_R") or self.animations.Idle_R
+	self.animations.Wakeup_L = tryLoadSequence(self.animator, AnimationsTest, "Wakeup_L") or self.animations.Idle_L
 
 	-- Launch (ser lanzado al aire)
-	self.animations.Launch_R = tryLoadSequence(self.animator, AnimationsTest, "Launch_R")
-		or self.animations.AirHurt_R
-	self.animations.Launch_L = tryLoadSequence(self.animator, AnimationsTest, "Launch_L")
-		or self.animations.AirHurt_L
-	
-	
+	self.animations.Launch_R = tryLoadSequence(self.animator, AnimationsTest, "Launch_R") or self.animations.AirHurt_R
+	self.animations.Launch_L = tryLoadSequence(self.animator, AnimationsTest, "Launch_L") or self.animations.AirHurt_L
 
 	return self
 end
 
+-- Verifica si existe la animación con el nombre base dado
 function AnimationController:HasAnimation(baseName)
 	local fullName = baseName .. "_" .. self.context.currentDirection
 	return self.animations[fullName] ~= nil
 end
 
+-- Detiene la animación actual con fadeTime opcional
 function AnimationController:StopCurrent(fadeTime)
 	fadeTime = fadeTime or 0.1
 
@@ -166,6 +159,7 @@ function AnimationController:StopCurrent(fadeTime)
 	end
 end
 
+-- Reproduce animación usando sufijo direccional y replica al servidor
 function AnimationController:PlayAnimation(baseName, fadeTime)
 	fadeTime = fadeTime or 0.15
 
@@ -209,6 +203,7 @@ function AnimationController:PlayAnimation(baseName, fadeTime)
 	return false
 end
 
+-- Recalcula y reproduce la animación de locomoción según estado actual
 function AnimationController:RefreshLocomotionAnimation()
 	local state = self.context.machine:GetState()
 
@@ -246,6 +241,7 @@ function AnimationController:RefreshLocomotionAnimation()
 	end
 end
 
+-- Carga animaciones del oponente para reproducir localmente (predicción visual)
 function AnimationController:LoadOpponentAnimations(opponentCharacter)
 	if not opponentCharacter then
 		return
@@ -284,13 +280,12 @@ function AnimationController:LoadOpponentAnimations(opponentCharacter)
 
 		HurtLight_R = loadSequence(opponentAnimator, AnimationsTest.HurtLight_R),
 		HurtLight_L = loadSequence(opponentAnimator, AnimationsTest.HurtLight_R),
-		
+
 		Crouch_R = loadSequence(opponentAnimator, AnimationsTest.Crouch_R),
 		Crouch_L = loadSequence(opponentAnimator, AnimationsTest.Crouch_R),
-		
+
 		CrouchWalk_R = loadSequence(opponentAnimator, AnimationsTest.CrouchWalk_R),
 		CrouchWalk_L = loadSequence(opponentAnimator, AnimationsTest.CrouchWalk_R),
-		
 	}
 
 	-- Nuevas animaciones del oponente con fallback
@@ -308,7 +303,7 @@ function AnimationController:LoadOpponentAnimations(opponentCharacter)
 	--	or self.opponentAnimations.Block_R
 	--self.opponentAnimations.BlockHit_L = tryLoadSequence(opponentAnimator, AnimationsTest, "BlockHit_L")
 	--	or self.opponentAnimations.Block_L
-	
+
 	self.opponentAnimations.CrouchPunch_R = tryLoadSequence(opponentAnimator, AnimationsTest, "CrouchPunch_R")
 		or self.opponentAnimations.Punch_R
 	self.opponentAnimations.CrouchPunch_L = tryLoadSequence(opponentAnimator, AnimationsTest, "CrouchPunch_L")
@@ -318,7 +313,7 @@ function AnimationController:LoadOpponentAnimations(opponentCharacter)
 		or self.opponentAnimations.HeavyPunch_R
 	self.opponentAnimations.CrouchHeavy_L = tryLoadSequence(opponentAnimator, AnimationsTest, "CrouchHeavy_L")
 		or self.opponentAnimations.HeavyPunch_L
-	
+
 	self.opponentAnimations.Dodge_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Dodge_R")
 		or self.opponentAnimations.Idle_R
 	self.opponentAnimations.Dodge_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Dodge_L")
@@ -363,6 +358,7 @@ function AnimationController:LoadOpponentAnimations(opponentCharacter)
 	self.currentOpponentAnimationName = nil
 end
 
+-- Detiene la animación del oponente en curso
 function AnimationController:StopOpponentAnimation(fadeTime)
 	fadeTime = fadeTime or 0.1
 
@@ -373,6 +369,7 @@ function AnimationController:StopOpponentAnimation(fadeTime)
 	end
 end
 
+-- Reproduce animación del oponente localmente (predicción visual)
 function AnimationController:PlayOpponentAnimation(animationName, fadeTime)
 	fadeTime = fadeTime or 0.1
 
@@ -381,9 +378,11 @@ function AnimationController:PlayOpponentAnimation(animationName, fadeTime)
 		return false
 	end
 
-	if self.currentOpponentAnimationName == animationName
+	if
+		self.currentOpponentAnimationName == animationName
 		and self.currentOpponentAnimation
-		and self.currentOpponentAnimation.IsPlaying then
+		and self.currentOpponentAnimation.IsPlaying
+	then
 		return true
 	end
 

@@ -1,3 +1,4 @@
+-- Cliente: inicializa DummyController cuando se detecta un dummy en workspace
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -8,6 +9,7 @@ local DummyController = require(Combat:WaitForChild("DummyController"))
 
 local player = Players.LocalPlayer
 
+-- Intenta crear DummyController para el dummy existente (solo en Training)
 local function tryInitializeDummy()
 	if player:GetAttribute("GameMode") == "Versus" then
 		return

@@ -1,7 +1,7 @@
+-- Server principal: maneja game modes, replica animaciones y ataques entre jugadores
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-
 
 -- ============================================
 -- 📦 CARGAR MÓDULOS
@@ -80,4 +80,3 @@ Players.PlayerRemoving:Connect(function(player)
 	print("👋 Player leaving:", player.Name)
 	GameModeManager.LeaveMatch(player)
 end)
-

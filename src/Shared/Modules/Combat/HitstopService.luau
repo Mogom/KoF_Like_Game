@@ -33,6 +33,7 @@ local onCompleteCallbacks = {}
 	@param animationsToFreeze: tabla opcional de AnimationTracks a pausar
 	@param onComplete: callback opcional que se ejecuta al terminar el hitstop
 ]]
+-- Aplica hitstop: congela animaciones por N frames, ejecuta callback al terminar
 function HitstopService:Apply(frames, animationsToFreeze, onComplete)
 	if not frames or frames <= 0 then
 		return
@@ -50,7 +51,7 @@ function HitstopService:Apply(frames, animationsToFreeze, onComplete)
 				if track and track.IsPlaying then
 					table.insert(frozenAnimations, {
 						track = track,
-						originalSpeed = track.Speed
+						originalSpeed = track.Speed,
 					})
 					track:AdjustSpeed(0)
 				end
@@ -75,7 +76,7 @@ function HitstopService:Apply(frames, animationsToFreeze, onComplete)
 			if track and track.IsPlaying then
 				table.insert(frozenAnimations, {
 					track = track,
-					originalSpeed = track.Speed
+					originalSpeed = track.Speed,
 				})
 				track:AdjustSpeed(0)
 			end
@@ -90,6 +91,7 @@ end
 --[[
 	¿Estamos en hitstop ahora mismo?
 ]]
+-- Retorna true si hay un hitstop activo
 function HitstopService:IsInHitstop()
 	return isActive
 end

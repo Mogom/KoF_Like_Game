@@ -1,15 +1,16 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+-- Server: matchmaking, game modes (Training/Versus), spawn management
 local GameModeManager = {}
 
 -- ============================================
 -- 🎮 VARIABLES GLOBALES
 -- ============================================
 
-local activeMatches = {}  -- { [player1] = player2 }
-local waitingPlayers = {}  -- Cola de jugadores esperando match
-local playerModes = {}  -- { [player] = "Training" or "Versus" }
+local activeMatches = {} -- { [player1] = player2 }
+local waitingPlayers = {} -- Cola de jugadores esperando match
+local playerModes = {} -- { [player] = "Training" or "Versus" }
 
 -- RemoteEvents
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -20,6 +21,7 @@ local SetOpponentEvent = RemoteEvents:WaitForChild("SetOpponent")
 -- 🔧 FUNCIONES AUXILIARES
 -- ============================================
 
+-- Asigna un SpawnLocation específico al jugador
 local function setPlayerSpawn(player, spawnName)
 	local spawn = workspace:FindFirstChild(spawnName)
 
@@ -32,11 +34,13 @@ local function setPlayerSpawn(player, spawnName)
 	return true
 end
 
+-- Fuerza respawn del jugador
 local function respawnPlayer(player)
 	-- Forzar respawn usando LoadCharacter
 	player:LoadCharacter()
 end
 
+-- Busca el dummy de entrenamiento en workspace
 local function findDummy()
 	return workspace:FindFirstChild("Enemy") or workspace:FindFirstChild("TrainingDummy")
 end
@@ -45,8 +49,8 @@ end
 -- 🎯 TRAINING MODE (Solo vs Dummy)
 -- ============================================
 
+-- Inicia modo Training: spawn + dummy + SetOpponent
 function GameModeManager.StartTrainingMode(player)
-	
 	player:SetAttribute("GameMode", "Training")
 
 	playerModes[player] = "Training"
@@ -57,7 +61,7 @@ function GameModeManager.StartTrainingMode(player)
 
 	-- Esperar a que spawne
 	local character = player.Character or player.CharacterAdded:Wait()
-	task.wait(0.5)  -- Tiempo para que todo cargue
+	task.wait(0.5) -- Tiempo para que todo cargue
 
 	-- Buscar dummy
 	local dummy = findDummy()
@@ -75,10 +79,10 @@ end
 -- ⚔️ VERSUS MODE (1v1 Multiplayer)
 -- ============================================
 
+-- Inicia modo Versus 1v1: empareja jugadores, spawn, SetOpponent mutuo
 function GameModeManager.StartVersus1v1Mode(player)
-	
 	player:SetAttribute("GameMode", "Versus")
-	
+
 	print("⚔️ Player requesting 1v1:", player.Name)
 
 	playerModes[player] = "Versus"
@@ -136,6 +140,7 @@ end
 -- 🔄 FUNCIÓN: Obtener oponente actual
 -- ============================================
 
+-- Retorna el oponente asignado al jugador
 function GameModeManager.GetOpponent(player)
 	return activeMatches[player]
 end
@@ -144,6 +149,7 @@ end
 -- 🚪 FUNCIÓN: Salir del match
 -- ============================================
 
+-- Limpia match y datos del jugador al salir
 function GameModeManager.LeaveMatch(player)
 	local opponent = activeMatches[player]
 

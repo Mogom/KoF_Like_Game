@@ -1,3 +1,4 @@
+-- Reproductor de sonidos posicionales via clones de Sound
 local SoundManager = {}
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,9 +14,9 @@ local SoundLibrary = {
 }
 
 -- ✅ Función para reproducir sonido
+-- Reproduce un sonido posicional clonando el Sound base
 function SoundManager.PlaySound(soundName, position, volume)
-
-	volume = volume or 1.0  -- Volumen por defecto
+	volume = volume or 1.0 -- Volumen por defecto
 
 	if not SoundLibrary[soundName] then
 		warn("❌ Sonido no encontrado:", soundName)
@@ -45,7 +46,6 @@ function SoundManager.PlaySound(soundName, position, volume)
 	game:GetService("Debris"):AddItem(sound.Parent or sound, sound.TimeLength + 0.1)
 
 	--print("🔊 Reproducing sound:", soundName)
-
 end
 
 return SoundManager

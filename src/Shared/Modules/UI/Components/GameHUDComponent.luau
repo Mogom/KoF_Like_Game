@@ -4,11 +4,12 @@ local UI = Modules:WaitForChild("UI")
 
 local UIBuilder = require(UI:WaitForChild("UIBuilder"))
 
+-- HUD del juego: barras de vida, combo counter, efectos críticos
 local GameHUDComponent = {}
 GameHUDComponent.__index = GameHUDComponent
 
+-- Constructor: vincula player y character para tracking de HP
 function GameHUDComponent.new(parent, player)
-
 	local self = setmetatable({}, GameHUDComponent)
 
 	self.player = player
@@ -30,18 +31,17 @@ function GameHUDComponent.new(parent, player)
 		return nil
 	end
 
-
 	return self
 end
 
+-- Construye la UI del HUD completa
 function GameHUDComponent:render(parent)
-
 	local screenGui = UIBuilder.ScreenGui({
 		Name = "GameHUD",
 		ResetOnSpawn = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		IgnoreGuiInset = true,  
-		Parent = parent
+		IgnoreGuiInset = true,
+		Parent = parent,
 	})
 
 	self.element = screenGui
@@ -64,11 +64,11 @@ function GameHUDComponent:render(parent)
 				Transparency = NumberSequence.new({
 					NumberSequenceKeypoint.new(0, 0.3),
 					NumberSequenceKeypoint.new(0.5, 0),
-					NumberSequenceKeypoint.new(1, 0.3)
+					NumberSequenceKeypoint.new(1, 0.3),
 				}),
-				Rotation = 90
-			})
-		}
+				Rotation = 90,
+			}),
+		},
 	})
 
 	-- ✅ Timer/Stage central
@@ -85,9 +85,9 @@ function GameHUDComponent:render(parent)
 			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 8) }),
 			UIBuilder.UIStroke({
 				Color = Color3.fromRGB(255, 200, 0),
-				Thickness = 3
-			})
-		}
+				Thickness = 3,
+			}),
+		},
 	})
 
 	-- Stage label
@@ -101,7 +101,7 @@ function GameHUDComponent:render(parent)
 		TextColor3 = Color3.fromRGB(200, 200, 200),
 		TextSize = 14,
 		Font = Enum.Font.GothamBold,
-		Parent = timerContainer
+		Parent = timerContainer,
 	})
 
 	-- Timer (cuenta regresiva)
@@ -117,7 +117,7 @@ function GameHUDComponent:render(parent)
 		Font = Enum.Font.GothamBold,
 		TextStrokeTransparency = 0.5,
 		TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
-		Parent = timerContainer
+		Parent = timerContainer,
 	})
 
 	-- ============================================
@@ -131,7 +131,7 @@ function GameHUDComponent:render(parent)
 		fillDirection = "Right",
 		playerName = self.player.Name,
 		parent = screenGui,
-		isPlayer1 = true
+		isPlayer1 = true,
 	})
 
 	-- ============================================
@@ -145,7 +145,7 @@ function GameHUDComponent:render(parent)
 		fillDirection = "Left",
 		playerName = "OPPONENT",
 		parent = screenGui,
-		isPlayer1 = false
+		isPlayer1 = false,
 	})
 
 	-- ============================================
@@ -158,8 +158,8 @@ function GameHUDComponent:render(parent)
 		Size = UDim2.new(0, 200, 0, 80),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundTransparency = 1,
-		Visible = false,  -- Oculto por defecto
-		Parent = screenGui
+		Visible = false, -- Oculto por defecto
+		Parent = screenGui,
 	})
 
 	self.comboText = UIBuilder.TextLabel({
@@ -172,7 +172,7 @@ function GameHUDComponent:render(parent)
 		Font = Enum.Font.GothamBold,
 		TextStrokeTransparency = 0,
 		TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
-		Parent = self.comboContainer
+		Parent = self.comboContainer,
 	})
 
 	self.comboLabel = UIBuilder.TextLabel({
@@ -185,12 +185,12 @@ function GameHUDComponent:render(parent)
 		TextSize = 24,
 		Font = Enum.Font.GothamBold,
 		TextStrokeTransparency = 0.5,
-		Parent = self.comboContainer
+		Parent = self.comboContainer,
 	})
-
 end
 
 -- ✅ Crear barra de vida de un jugador
+-- Crea barra de vida para un jugador (izquierda o derecha)
 function GameHUDComponent:createPlayerHealthBar(props)
 	-- Container principal
 	local container = UIBuilder.Frame({
@@ -199,7 +199,7 @@ function GameHUDComponent:createPlayerHealthBar(props)
 		Size = UDim2.new(0, 450, 0, 80),
 		AnchorPoint = props.anchorPoint,
 		BackgroundTransparency = 1,
-		Parent = props.parent
+		Parent = props.parent,
 	})
 
 	-- Avatar frame (placeholder)
@@ -218,9 +218,9 @@ function GameHUDComponent:createPlayerHealthBar(props)
 			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 8) }),
 			UIBuilder.UIStroke({
 				Color = props.isPlayer1 and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(255, 100, 0),
-				Thickness = 3
-			})
-		}
+				Thickness = 3,
+			}),
+		},
 	})
 
 	-- Texto placeholder en avatar
@@ -232,7 +232,7 @@ function GameHUDComponent:createPlayerHealthBar(props)
 		TextColor3 = Color3.fromRGB(150, 150, 150),
 		TextSize = 32,
 		Font = Enum.Font.GothamBold,
-		Parent = avatarFrame
+		Parent = avatarFrame,
 	})
 
 	-- Health bar background
@@ -252,9 +252,9 @@ function GameHUDComponent:createPlayerHealthBar(props)
 			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 6) }),
 			UIBuilder.UIStroke({
 				Color = props.isPlayer1 and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(255, 100, 0),
-				Thickness = 2
-			})
-		}
+				Thickness = 2,
+			}),
+		},
 	})
 
 	-- Health fill (la barra que se reduce)
@@ -276,11 +276,14 @@ function GameHUDComponent:createPlayerHealthBar(props)
 			UIBuilder.UIGradient({
 				Color = ColorSequence.new({
 					ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-					ColorSequenceKeypoint.new(1, props.isPlayer1 and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(200, 100, 0))
+					ColorSequenceKeypoint.new(
+						1,
+						props.isPlayer1 and Color3.fromRGB(0, 200, 100) or Color3.fromRGB(200, 100, 0)
+					),
 				}),
-				Rotation = props.isPlayer1 and 0 or 180
-			})
-		}
+				Rotation = props.isPlayer1 and 0 or 180,
+			}),
+		},
 	})
 
 	-- Guardar referencia solo para Player 1 (el jugador actual)
@@ -299,7 +302,7 @@ function GameHUDComponent:createPlayerHealthBar(props)
 		Font = Enum.Font.GothamBold,
 		TextStrokeTransparency = 0.5,
 		TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
-		Parent = healthBg
+		Parent = healthBg,
 	})
 
 	if props.isPlayer1 then
@@ -318,14 +321,14 @@ function GameHUDComponent:createPlayerHealthBar(props)
 		TextSize = 16,
 		Font = Enum.Font.Gotham,
 		TextXAlignment = props.isPlayer1 and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right,
-		Parent = container
+		Parent = container,
 	})
 
 	return container
 end
 
+-- Conecta listener de HP del Humanoid para actualizar la barra
 function GameHUDComponent:setupHealthTracking()
-
 	if not self.humanoid then
 		warn("❌ No humanoid found!")
 		return
@@ -339,6 +342,7 @@ function GameHUDComponent:setupHealthTracking()
 	self:updateHealth(self.humanoid.Health)
 end
 
+-- Actualiza barra de vida con tween y efecto de daño fantasma
 function GameHUDComponent:updateHealth(health)
 	if not self.healthFillP1 or not self.healthTextP1 then
 		return
@@ -349,7 +353,7 @@ function GameHUDComponent:updateHealth(health)
 
 	-- ✅ Animar el tamaño (desde la izquierda)
 	UIBuilder.tween(self.healthFillP1, 0.3, {
-		Size = UDim2.new(percentage, -6, 1, -6)
+		Size = UDim2.new(percentage, -6, 1, -6),
 	}, Enum.EasingStyle.Quad)
 
 	-- ✅ Actualizar texto
@@ -376,7 +380,7 @@ function GameHUDComponent:updateHealth(health)
 	end
 
 	UIBuilder.tween(self.healthFillP1, 0.3, {
-		BackgroundColor3 = color
+		BackgroundColor3 = color,
 	})
 
 	-- Actualizar gradiente
@@ -384,27 +388,32 @@ function GameHUDComponent:updateHealth(health)
 	if gradient then
 		gradient.Color = ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-			ColorSequenceKeypoint.new(1, gradientColor)
+			ColorSequenceKeypoint.new(1, gradientColor),
 		})
 	end
 end
 
 -- ✅ Efecto de parpadeo cuando la vida está crítica
+-- Inicia parpadeo de la barra cuando HP está crítico
 function GameHUDComponent:startCriticalFlash()
-	if self.isFlashing then return end
+	if self.isFlashing then
+		return
+	end
 
 	self.isFlashing = true
 
 	task.spawn(function()
 		for i = 1, 3 do
-			if not self.healthFillP1 then break end
+			if not self.healthFillP1 then
+				break
+			end
 
 			UIBuilder.tween(self.healthFillP1, 0.15, {
-				BackgroundTransparency = 0.5
+				BackgroundTransparency = 0.5,
 			})
 			task.wait(0.15)
 			UIBuilder.tween(self.healthFillP1, 0.15, {
-				BackgroundTransparency = 0
+				BackgroundTransparency = 0,
 			})
 			task.wait(0.15)
 		end
@@ -414,8 +423,11 @@ function GameHUDComponent:startCriticalFlash()
 end
 
 -- ✅ Mostrar combo (se puede llamar desde DamageService)
+-- Muestra el combo counter con animación
 function GameHUDComponent:showCombo(count)
-	if not self.comboContainer then return end
+	if not self.comboContainer then
+		return
+	end
 
 	self.comboText.Text = tostring(count)
 	self.comboContainer.Visible = true
@@ -423,22 +435,26 @@ function GameHUDComponent:showCombo(count)
 	-- Animación de entrada (scale)
 	self.comboContainer.Size = UDim2.new(0, 0, 0, 0)
 	UIBuilder.tween(self.comboContainer, 0.3, {
-		Size = UDim2.new(0, 200, 0, 80)
+		Size = UDim2.new(0, 200, 0, 80),
 	}, Enum.EasingStyle.Back)
 end
 
 -- ✅ Ocultar combo
+-- Oculta el combo counter
 function GameHUDComponent:hideCombo()
-	if not self.comboContainer then return end
+	if not self.comboContainer then
+		return
+	end
 
 	UIBuilder.tween(self.comboContainer, 0.2, {
-		Size = UDim2.new(0, 0, 0, 0)
+		Size = UDim2.new(0, 0, 0, 0),
 	}):Play()
 
 	task.wait(0.2)
 	self.comboContainer.Visible = false
 end
 
+-- Destruye toda la UI del HUD
 function GameHUDComponent:destroy()
 	if self.element then
 		self.element:Destroy()

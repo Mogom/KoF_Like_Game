@@ -1,3 +1,4 @@
+-- Cliente: captura teclas (WASD, Space, J/K), mapea a acciones del CharacterController
 -- InputClient (mejorado): detecta W/Space para jump y S para crouch robustamente
 
 local Players = game:GetService("Players")
@@ -50,6 +51,7 @@ local KeyState = {
 	Down = false,
 }
 
+-- Calcula dirección de movimiento basado en teclas A/D presionadas
 local function resolveMovementFromKeyState()
 	if controller:IsAttackLocked() or controller:IsInHitstun() then
 		return
@@ -66,11 +68,15 @@ end
 
 -- InputBegan
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
+	if processed then
+		return
+	end
 
 	-- comando puede venir como KeyCode o UserInputType
 	local command = KeyMap[input.KeyCode] or KeyMap[input.UserInputType]
-	if not command then return end
+	if not command then
+		return
+	end
 
 	-- guardamos en buffer (para comandos/combos)
 	buffer:AddInput(command)
@@ -96,7 +102,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 
 	if command == "Up" then
-		
 		if KeyState.Down then
 			return
 		end
@@ -108,7 +113,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		controller:Jump()
 		return
 	end
-	
+
 	if command == "Dodge" then
 		controller:Dodge()
 		return
@@ -122,13 +127,14 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if command == "HeavyPunch" then
 		return
 	end
-
 end)
 
 -- InputEnded
 UserInputService.InputEnded:Connect(function(input)
 	local command = KeyMap[input.KeyCode] or KeyMap[input.UserInputType]
-	if not command then return end
+	if not command then
+		return
+	end
 
 	if command == "Back" then
 		KeyState.Back = false
@@ -149,12 +155,12 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
-
-
 -- Loop de parser (igual que tenías)
 RunService.RenderStepped:Connect(function()
 	local command = CommandParser.Parse(buffer)
-	if not command then return end
+	if not command then
+		return
+	end
 
 	if command == "Punch" then
 		buffer:Consume("Punch")
@@ -167,8 +173,8 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
-
 -- 🔄 Exponer función para que CharacterController la llame
+-- Fuerza recalcular movimiento (usado al soltar tecla)
 local function forceResolveMovement()
 	resolveMovementFromKeyState()
 end

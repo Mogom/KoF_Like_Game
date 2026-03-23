@@ -1,3 +1,4 @@
+-- Tabla de datos de todos los ataques: daño, pushback, hitstop, hitbox, animación
 local Attacks = {}
 
 --[[
@@ -45,13 +46,13 @@ Attacks.Punch = {
 
 	CancelWindow = {
 		Start = 8,
-		End = 14
+		End = 14,
 	},
 
 	Hitbox = {
 		Size = Vector3.new(4, 5, 4),
-		Offset = Vector3.new(0, 0, -2)
-	}
+		Offset = Vector3.new(0, 0, -2),
+	},
 }
 
 Attacks.HeavyPunch = {
@@ -90,13 +91,13 @@ Attacks.HeavyPunch = {
 
 	CancelWindow = {
 		Start = 8,
-		End = 14
+		End = 14,
 	},
 
 	Hitbox = {
 		Size = Vector3.new(4, 3, 5),
-		Offset = Vector3.new(0, 0, -4)
-	}
+		Offset = Vector3.new(0, 0, -4),
+	},
 }
 
 -- ============================================
@@ -133,13 +134,13 @@ Attacks.CrouchPunch = {
 
 	CancelWindow = {
 		Start = 7,
-		End = 13
+		End = 13,
 	},
 
 	Hitbox = {
 		Size = Vector3.new(4, 3, 4),
-		Offset = Vector3.new(0, -1, -2)
-	}
+		Offset = Vector3.new(0, -1, -2),
+	},
 }
 
 Attacks.CrouchHeavy = {
@@ -180,8 +181,8 @@ Attacks.CrouchHeavy = {
 
 	Hitbox = {
 		Size = Vector3.new(5, 3, 5),
-		Offset = Vector3.new(0, -2, -3)
-	}
+		Offset = Vector3.new(0, -2, -3),
+	},
 }
 
 -- ============================================
@@ -221,8 +222,8 @@ Attacks.AirPunch = {
 
 	Hitbox = {
 		Size = Vector3.new(4, 4, 4),
-		Offset = Vector3.new(0, -1, -2)
-	}
+		Offset = Vector3.new(0, -1, -2),
+	},
 }
 
 Attacks.AirHeavy = {
@@ -258,8 +259,8 @@ Attacks.AirHeavy = {
 
 	Hitbox = {
 		Size = Vector3.new(5, 4, 5),
-		Offset = Vector3.new(0, -2, -3)
-	}
+		Offset = Vector3.new(0, -2, -3),
+	},
 }
 
 return Attacks

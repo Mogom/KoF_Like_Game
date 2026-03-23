@@ -1,6 +1,8 @@
+-- Clase base de componente UI estilo React: estado, hijos, render, destroy
 local Component = {}
 Component.__index = Component
 
+-- Constructor: inicializa estado y lista de hijos
 function Component.new()
 	local self = setmetatable({}, Component)
 
@@ -12,6 +14,7 @@ function Component.new()
 end
 
 -- ✅ Similar a React setState
+-- Actualiza el estado del componente (merge parcial)
 function Component:setState(newState)
 	for key, value in pairs(newState) do
 		self.state[key] = value
@@ -23,6 +26,7 @@ function Component:setState(newState)
 end
 
 -- ✅ Destruir componente
+-- Destruye el elemento UI y todos sus hijos
 function Component:destroy()
 	if self.element then
 		self.element:Destroy()

@@ -1,3 +1,4 @@
+-- Server: Inicializa training dummies con hurtbox y atributos
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
@@ -5,6 +6,7 @@ local Combat = Modules:WaitForChild("Combat")
 
 local Hurtbox = require(Combat:WaitForChild("Hurtbox"))
 
+-- Configura un dummy: marca como training dummy y crea su hurtbox
 local function setupDummy(dummy)
 	if not dummy or not dummy:IsA("Model") then
 		return

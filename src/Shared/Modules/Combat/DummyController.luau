@@ -12,9 +12,11 @@ local AnimationsTest = AnimationsFolder:WaitForChild("Test")
 
 local HitstopService = require(Combat:WaitForChild("HitstopService"))
 
+-- Controlador del dummy de entrenamiento: recibe hits, pushback, facing y regen
 local DummyController = {}
 DummyController.__index = DummyController
 
+-- Constructor: inicializa dummy con posición, animaciones y listeners
 function DummyController.new(character)
 	local self = setmetatable({}, DummyController)
 
@@ -64,6 +66,7 @@ function DummyController.new(character)
 	return self
 end
 
+-- Reproduce animación en el dummy por nombre
 function DummyController:PlayAnimation(name, fadeTime)
 	fadeTime = fadeTime or 0.1
 
@@ -85,6 +88,7 @@ function DummyController:PlayAnimation(name, fadeTime)
 	self.currentAnimation = anim
 end
 
+-- Escucha cambios en HitResultId del dummy para reaccionar a golpes
 function DummyController:_bindHitResult()
 	self.character:SetAttribute("HitResultId", self.character:GetAttribute("HitResultId") or 0)
 
@@ -109,6 +113,7 @@ function DummyController:_bindHitResult()
 	end)
 end
 
+-- Obtiene el root del jugador local más cercano
 function DummyController:_getPlayerRoot()
 	local player = Players.LocalPlayer
 	if not player then
@@ -123,7 +128,7 @@ function DummyController:_getPlayerRoot()
 	return character:FindFirstChild("HumanoidRootPart")
 end
 
-
+-- Verifica si el dummy puede moverse a la posición X (colisión)
 function DummyController:CanMoveToX(targetX)
 	local currentPos = self.root.Position
 
@@ -146,6 +151,7 @@ function DummyController:CanMoveToX(targetX)
 	return true
 end
 
+-- Verifica si una part es obstáculo de colisión (pared, piso, jugador)
 function DummyController:IsBlockingPart(part)
 	if not part or not part:IsA("BasePart") then
 		return false
@@ -170,6 +176,7 @@ function DummyController:IsBlockingPart(part)
 	return true
 end
 
+-- Mueve currentX del dummy con verificación de colisión
 function DummyController:MoveCurrentX(deltaX)
 	if math.abs(deltaX) <= 0.0001 then
 		return
@@ -196,6 +203,7 @@ function DummyController:MoveCurrentX(deltaX)
 	end
 end
 
+-- Aplica pushback con decay por frame
 function DummyController:_updatePushback()
 	if math.abs(self.pushVelocityX) > 0.01 then
 		self:MoveCurrentX(self.pushVelocityX)
@@ -209,6 +217,7 @@ function DummyController:_updatePushback()
 	end
 end
 
+-- Loop que hace al dummy mirar siempre hacia el jugador
 function DummyController:_startFacingLoop()
 	RunService.RenderStepped:Connect(function()
 		if not self.character or not self.character.Parent then
@@ -234,11 +243,7 @@ function DummyController:_startFacingLoop()
 			local faceRight = playerPos.X >= self.currentX
 			local angleY = faceRight and math.rad(-90) or math.rad(90)
 
-			self.root.CFrame = CFrame.new(
-				self.currentX,
-				myPos.Y,
-				self.lockedZ
-			) * CFrame.Angles(0, angleY, 0)
+			self.root.CFrame = CFrame.new(self.currentX, myPos.Y, self.lockedZ) * CFrame.Angles(0, angleY, 0)
 			return
 		end
 
@@ -252,29 +257,24 @@ function DummyController:_startFacingLoop()
 
 		local targetY = self.isInHitstun and myPos.Y or self.initialPosition.Y
 
-		self.root.CFrame = CFrame.new(
-			self.currentX,
-			targetY,
-			self.lockedZ
-		) * CFrame.Angles(0, angleY, 0)
+		self.root.CFrame = CFrame.new(self.currentX, targetY, self.lockedZ) * CFrame.Angles(0, angleY, 0)
 	end)
 end
 
+-- Loop de regeneración de HP del dummy tras no recibir daño
 function DummyController:_startRegenLoop()
 	task.spawn(function()
 		while self.character and self.character.Parent do
 			task.wait(2)
 
 			if self.humanoid.Health < self.humanoid.MaxHealth then
-				self.humanoid.Health = math.min(
-					self.humanoid.MaxHealth,
-					self.humanoid.Health + 10
-				)
+				self.humanoid.Health = math.min(self.humanoid.MaxHealth, self.humanoid.Health + 10)
 			end
 		end
 	end)
 end
 
+-- Procesa el hit recibido: hitstop, animación, pushback
 function DummyController:OnHit(hitData)
 	self.hitReactionId += 1
 	local reactionId = self.hitReactionId
@@ -305,6 +305,7 @@ function DummyController:OnHit(hitData)
 	end
 end
 
+-- Post-hitstop: sincroniza posición, aplica velocidad de pushback, programa fin hitstun
 function DummyController:_applyPushbackAfterHitstop(hitData, reactionId, pushback, hitstunDuration)
 	if pushback > 0 then
 		local attackerX = hitData.AttackerPositionX or 0
@@ -328,6 +329,7 @@ function DummyController:_applyPushbackAfterHitstop(hitData, reactionId, pushbac
 	end)
 end
 
+-- Resetea posición del dummy a su spawn original
 function DummyController:ResetPosition()
 	if not self.root or not self.root.Parent then
 		return

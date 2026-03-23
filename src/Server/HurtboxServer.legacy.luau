@@ -1,3 +1,4 @@
+-- Server: Crea hurtboxes para todos los jugadores al spawnear
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -6,6 +7,7 @@ local Combat = Modules:WaitForChild("Combat")
 
 local Hurtbox = require(Combat:WaitForChild("Hurtbox"))
 
+-- Crea una hurtbox para el personaje dado
 local function setupCharacterHurtbox(character)
 	if not character then
 		return

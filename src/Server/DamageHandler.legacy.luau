@@ -1,5 +1,5 @@
+-- Server: Valida hits, aplica daño, gestiona NetworkOwnership y atributos de reacción
 local Players = game:GetService("Players")
---roblox cerru
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -17,6 +17,7 @@ if not ApplyDamageEvent then
 	ApplyDamageEvent.Parent = RemoteEvents
 end
 
+-- Verifica si el modelo es un dummy de entrenamiento
 local function isTrainingDummy(model)
 	if not model or not model:IsA("Model") then
 		return false
@@ -130,15 +131,16 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 	victimCharacter:SetAttribute("LastVictimPositionX", hitResult.VictimPositionX)
 	victimCharacter:SetAttribute("HitResultId", currentHitResultId + 1)
 
-	-- Network ownership temporal
-	-- Dar ownership al servidor primero, luego al atacante
-	-- Esto evita que la víctima "corrija" su posición
+	-- Network ownership temporal: dar control al atacante durante la reacción.
+	-- El motor de la víctima cede CFrame durante hitstun/knockdown/wakeup
+	-- (solo lee root.Position.X para mantener currentX sincronizado).
+	-- Al devolver ownership, currentX ya está sincronizado → sin rubber-banding.
 	if victimPlayer then
 		local hitstunDuration = hitResult.HitstunDuration or 0.35
 		local hitstopDuration = (hitResult.HitstopFrames or 0) / 60
 		local knockdownExtra = 0
 		if hitResult.Knockdown then
-			knockdownExtra = 1.2
+			knockdownExtra = 1.2 -- knockdownDuration (0.8) + wakeupDuration (0.4)
 		end
 
 		-- Paso 1: Ownership al servidor (neutral)
@@ -153,9 +155,9 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 			end)
 		end)
 
-		-- Paso 3: Devolver a la víctima cuando termine todo
-		local pushbackExtra = math.min(0.5, (hitResult.Pushback or 0) * 0.03)
-		task.delay(hitstopDuration + hitstunDuration + knockdownExtra + pushbackExtra + 0.4, function()
+		-- Paso 3: Devolver a la víctima al finalizar la cadena de reacción.
+		local totalReactionTime = hitstopDuration + hitstunDuration + knockdownExtra
+		task.delay(totalReactionTime + 0.15, function()
 			if victimRoot and victimRoot.Parent then
 				pcall(function()
 					if victimPlayer and victimPlayer.Parent then

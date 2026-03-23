@@ -4,11 +4,12 @@ local UI = Modules:WaitForChild("UI")
 
 local UIBuilder = require(UI:WaitForChild("UIBuilder"))
 
+-- Menú principal estilo arcade: Training y Versus con animaciones
 local MainMenuComponent = {}
 MainMenuComponent.__index = MainMenuComponent
 
+-- Constructor: recibe callbacks de Training y Versus
 function MainMenuComponent.new(parent, props)
-
 	local self = setmetatable({}, MainMenuComponent)
 
 	self.props = props or {}
@@ -17,7 +18,6 @@ function MainMenuComponent.new(parent, props)
 	self.element = nil
 	self.menuFrame = nil
 	self.selectedIndex = 1
-
 
 	-- Crear UI
 	local success, err = pcall(function()
@@ -30,19 +30,18 @@ function MainMenuComponent.new(parent, props)
 		return nil
 	end
 
-
 	return self
 end
 
+-- Construye toda la UI del menú principal
 function MainMenuComponent:render(parent)
-
 	-- ✅ Crear ScreenGui
 	local screenGui = UIBuilder.ScreenGui({
 		Name = "MainMenu",
 		ResetOnSpawn = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		IgnoreGuiInset = true,  
-		Parent = parent
+		IgnoreGuiInset = true,
+		Parent = parent,
 	})
 
 	self.element = screenGui
@@ -53,7 +52,7 @@ function MainMenuComponent:render(parent)
 		Size = UDim2.new(1, 0, 1, 0),
 		BackgroundColor3 = Color3.fromRGB(10, 10, 15),
 		BorderSizePixel = 0,
-		Parent = screenGui
+		Parent = screenGui,
 	})
 
 	-- ✅ Frame principal con borde neón
@@ -71,10 +70,10 @@ function MainMenuComponent:render(parent)
 			UIBuilder.UIStroke({
 				Color = Color3.fromRGB(0, 255, 100),
 				Thickness = 4,
-				Transparency = 0
+				Transparency = 0,
 			}),
-			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 8) })
-		}
+			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 8) }),
+		},
 	})
 
 	self.menuFrame = menuFrame
@@ -92,9 +91,9 @@ function MainMenuComponent:render(parent)
 			UIBuilder.UIStroke({
 				Color = Color3.fromRGB(0, 200, 80),
 				Thickness = 2,
-				Transparency = 0.3
-			})
-		}
+				Transparency = 0.3,
+			}),
+		},
 	})
 
 	-- ✅ Decoración esquina superior izquierda
@@ -122,9 +121,9 @@ function MainMenuComponent:render(parent)
 			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 4) }),
 			UIBuilder.UIStroke({
 				Color = Color3.fromRGB(255, 255, 0),
-				Thickness = 3
-			})
-		}
+				Thickness = 3,
+			}),
+		},
 	})
 
 	-- ✅ Efecto de sombra en header
@@ -139,7 +138,7 @@ function MainMenuComponent:render(parent)
 		Font = Enum.Font.GothamBold,
 		TextTransparency = 0.5,
 		ZIndex = 0,
-		Parent = header
+		Parent = header,
 	})
 
 	-- ✅ Separador decorativo
@@ -157,10 +156,10 @@ function MainMenuComponent:render(parent)
 				Transparency = NumberSequence.new({
 					NumberSequenceKeypoint.new(0, 1),
 					NumberSequenceKeypoint.new(0.5, 0),
-					NumberSequenceKeypoint.new(1, 1)
-				})
-			})
-		}
+					NumberSequenceKeypoint.new(1, 1),
+				}),
+			}),
+		},
 	})
 
 	-- ✅ Selector animado (flecha)
@@ -173,7 +172,7 @@ function MainMenuComponent:render(parent)
 		TextColor3 = Color3.fromRGB(0, 255, 100),
 		TextSize = 40,
 		Font = Enum.Font.GothamBold,
-		Parent = menuFrame
+		Parent = menuFrame,
 	})
 
 	-- ✅ Botones estilo arcade con números
@@ -182,7 +181,7 @@ function MainMenuComponent:render(parent)
 		text = "TRAINING MODE",
 		position = UDim2.new(0.5, 0, 0, 200),
 		onClick = self.onTrainingClick,
-		parent = menuFrame
+		parent = menuFrame,
 	})
 
 	local button2 = self:createArcadeButton({
@@ -190,7 +189,7 @@ function MainMenuComponent:render(parent)
 		text = "1v1 VERSUS",
 		position = UDim2.new(0.5, 0, 0, 300),
 		onClick = self.onVersusClick,
-		parent = menuFrame
+		parent = menuFrame,
 	})
 
 	-- ✅ Info box inferior (estilo KOF)
@@ -207,9 +206,9 @@ function MainMenuComponent:render(parent)
 			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 4) }),
 			UIBuilder.UIStroke({
 				Color = Color3.fromRGB(0, 255, 100),
-				Thickness = 2
-			})
-		}
+				Thickness = 2,
+			}),
+		},
 	})
 
 	-- ✅ Label "INFO" estilo arcade
@@ -223,7 +222,7 @@ function MainMenuComponent:render(parent)
 		TextColor3 = Color3.fromRGB(0, 0, 0),
 		TextSize = 20,
 		Font = Enum.Font.GothamBold,
-		Parent = infoBox
+		Parent = infoBox,
 	})
 
 	-- ✅ Texto de info
@@ -237,17 +236,18 @@ function MainMenuComponent:render(parent)
 		TextSize = 16,
 		Font = Enum.Font.Gotham,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = infoBox
+		Parent = infoBox,
 	})
 
 	-- ✅ Animación de entrada (desde arriba)
 	menuFrame.Position = UDim2.new(0.5, 0, -0.5, 0)
 	UIBuilder.tween(menuFrame, 0.6, {
-		Position = UDim2.new(0.5, 0, 0.5, 0)
+		Position = UDim2.new(0.5, 0, 0.5, 0),
 	}, Enum.EasingStyle.Back)
 end
 
 -- ✅ Crear decoración de esquina estilo arcade
+-- Crea decoración de esquina para el frame
 function MainMenuComponent:createCornerDecoration(parent, corner, position)
 	local decoration = UIBuilder.Frame({
 		Name = corner .. "Decoration",
@@ -257,11 +257,12 @@ function MainMenuComponent:createCornerDecoration(parent, corner, position)
 		BorderSizePixel = 0,
 		Rotation = 45,
 		ZIndex = 10,
-		Parent = parent
+		Parent = parent,
 	})
 end
 
 -- ✅ Crear botón estilo arcade (con número y texto)
+-- Crea un botón estilo arcade con hover y click effects
 function MainMenuComponent:createArcadeButton(props)
 	local container = UIBuilder.Frame({
 		Name = "ButtonContainer_" .. props.number,
@@ -269,7 +270,7 @@ function MainMenuComponent:createArcadeButton(props)
 		Position = props.position,
 		Size = UDim2.new(0, 450, 0, 70),
 		BackgroundTransparency = 1,
-		Parent = props.parent
+		Parent = props.parent,
 	})
 
 	-- ✅ Número (estilo arcade)
@@ -290,9 +291,9 @@ function MainMenuComponent:createArcadeButton(props)
 			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 8) }),
 			UIBuilder.UIStroke({
 				Color = Color3.fromRGB(0, 200, 80),
-				Thickness = 2
-			})
-		}
+				Thickness = 2,
+			}),
+		},
 	})
 
 	-- ✅ Botón principal
@@ -314,38 +315,38 @@ function MainMenuComponent:createArcadeButton(props)
 			UIBuilder.UICorner({ CornerRadius = UDim.new(0, 8) }),
 			UIBuilder.UIStroke({
 				Color = Color3.fromRGB(0, 200, 80),
-				Thickness = 2
-			})
-		}
+				Thickness = 2,
+			}),
+		},
 	})
 
 	-- ✅ Hover effect (brillo verde)
 	button.MouseEnter:Connect(function()
 		UIBuilder.tween(button, 0.2, {
-			BackgroundColor3 = Color3.fromRGB(0, 100, 50)
+			BackgroundColor3 = Color3.fromRGB(0, 100, 50),
 		})
 		UIBuilder.tween(button, 0.2, {
-			TextColor3 = Color3.fromRGB(255, 255, 255)
+			TextColor3 = Color3.fromRGB(255, 255, 255),
 		})
 
 		-- Animar número también
 		UIBuilder.tween(numberLabel, 0.2, {
 			BackgroundColor3 = Color3.fromRGB(0, 255, 100),
-			TextColor3 = Color3.fromRGB(0, 0, 0)
+			TextColor3 = Color3.fromRGB(0, 0, 0),
 		})
 	end)
 
 	button.MouseLeave:Connect(function()
 		UIBuilder.tween(button, 0.2, {
-			BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+			BackgroundColor3 = Color3.fromRGB(20, 20, 30),
 		})
 		UIBuilder.tween(button, 0.2, {
-			TextColor3 = Color3.fromRGB(200, 200, 200)
+			TextColor3 = Color3.fromRGB(200, 200, 200),
 		})
 
 		UIBuilder.tween(numberLabel, 0.2, {
 			BackgroundColor3 = Color3.fromRGB(20, 20, 30),
-			TextColor3 = Color3.fromRGB(0, 255, 100)
+			TextColor3 = Color3.fromRGB(0, 255, 100),
 		})
 	end)
 
@@ -358,16 +359,17 @@ function MainMenuComponent:createArcadeButton(props)
 end
 
 -- ✅ Animación del selector (flecha parpadeante)
+-- Inicia loop de animación del selector de menú
 function MainMenuComponent:startSelectorAnimation()
 	task.spawn(function()
 		while self.selector and self.selector.Parent do
 			-- Parpadeo
 			UIBuilder.tween(self.selector, 0.5, {
-				TextTransparency = 0.3
+				TextTransparency = 0.3,
 			})
 			task.wait(0.5)
 			UIBuilder.tween(self.selector, 0.5, {
-				TextTransparency = 0
+				TextTransparency = 0,
 			})
 			task.wait(0.5)
 		end
@@ -375,15 +377,15 @@ function MainMenuComponent:startSelectorAnimation()
 end
 
 -- ✅ Hide con animación
+-- Oculta el menú con animación de fade out
 function MainMenuComponent:hide()
-
 	if not self.menuFrame then
 		warn("❌ menuFrame is nil!")
 		return
 	end
 
 	local tween = UIBuilder.tween(self.menuFrame, 0.4, {
-		Position = UDim2.new(0.5, 0, -1, 0)
+		Position = UDim2.new(0.5, 0, -1, 0),
 	}, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 
 	tween.Completed:Wait()
@@ -391,10 +393,10 @@ function MainMenuComponent:hide()
 	if self.element then
 		self.element.Enabled = false
 	end
-
 end
 
 -- ✅ Destruir componente
+-- Destruye toda la UI del menú
 function MainMenuComponent:destroy()
 	if self.element then
 		self.element:Destroy()
