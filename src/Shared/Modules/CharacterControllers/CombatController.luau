@@ -8,6 +8,7 @@ local Attacks = require(Combat:WaitForChild("Attacks"))
 local Hitbox = require(Combat:WaitForChild("Hitbox"))
 local SoundManager = require(Combat:WaitForChild("SoundManager"))
 local HitstopService = require(Combat:WaitForChild("HitstopService"))
+local VFXService = require(Combat:WaitForChild("VFXService"))
 
 -- Controlador de combate: ataques, hit reactions, hitstun, knockdown, predicción del oponente
 local CombatController = {}
@@ -303,6 +304,9 @@ function CombatController:ApplyHitReaction(hitData)
 	self.context.machine:SetState("Hitstun")
 	self.animationController:PlayAnimation(hitAnimation, 0.03)
 
+	-- Flash visual al recibir el golpe
+	VFXService.FlashCharacter(self.context.character, 0.08)
+
 	if hitstopFrames > 0 then
 		local animsToFreeze = {}
 		if self.animationController.currentAnimation then
@@ -561,6 +565,64 @@ function CombatController:RegisterStates(machine)
 				end)
 			end
 
+			-- =============================================
+			-- 🦘 ATTACK JUMP: Salto durante el ataque
+			-- =============================================
+			if attack.AttackJump and attack.JumpHeight and attack.JumpHeight > 0 then
+				local jumpFrameStart = attack.JumpFrameStart or 1
+				local jumpHeight = attack.JumpHeight
+				local jumpApplied = false
+				local jumpFinished = false
+
+				local jumpConnection
+				jumpConnection = RunService.RenderStepped:Connect(function()
+					if jumpFinished then
+						if jumpConnection then
+							jumpConnection:Disconnect()
+							jumpConnection = nil
+						end
+						return
+					end
+
+					-- Si ya no estamos en Attack, cancelar
+					if self.context.machine:GetState() ~= "Attack" then
+						jumpFinished = true
+						return
+					end
+
+					-- No saltar durante hitstop
+					if HitstopService:IsInHitstop() then
+						return
+					end
+
+					local currentFrame = self.context.attackFrame
+
+					-- Esperar al frame de inicio
+					if currentFrame < jumpFrameStart then
+						return
+					end
+
+					-- Solo disparar una vez
+					if not jumpApplied then
+						jumpApplied = true
+						jumpFinished = true
+
+						local root = self.context.root
+						root.AssemblyLinearVelocity = Vector3.new(0, jumpHeight, 0)
+						self.context.isAirborne = true
+					end
+				end)
+
+				-- Cleanup ligado a la duración total del ataque
+				task.delay(attack.Startup + attack.Active + attack.Recovery + 0.1, function()
+					jumpFinished = true
+					if jumpConnection then
+						jumpConnection:Disconnect()
+						jumpConnection = nil
+					end
+				end)
+			end
+
 			task.delay(attack.Startup, function()
 				if self.context.machine:GetState() ~= "Attack" then
 					return
@@ -568,6 +630,11 @@ function CombatController:RegisterStates(machine)
 
 				local hitbox = Hitbox.new(self.context.root, attack.Hitbox)
 				hitbox.attackData = attack
+
+				-- Efecto visual al conectar el golpe
+				hitbox.onHit = function(hitPosition, direction, _victimCharacter)
+					VFXService.PlayHitEffect(hitPosition, attack.HitType or "Light", direction)
+				end
 
 				local connection
 				connection = RunService.RenderStepped:Connect(function()
@@ -922,15 +989,18 @@ function CombatController:RequestAttack(type)
 
 	-- =============================================
 	-- 🦵 CROUCH ATTACKS: Mapear a versión agachada
+	-- Los movimientos especiales omiten este mapeo
 	-- =============================================
 	local actualType = type
-	if self.context.isCrouching then
-		local crouchAttackMap = {
-			Punch = "CrouchPunch",
-			HeavyPunch = "CrouchHeavy",
-		}
-		if crouchAttackMap[type] and Attacks[crouchAttackMap[type]] then
-			actualType = crouchAttackMap[type]
+	if not (Attacks[type] and Attacks[type].IsSpecial) then
+		if self.context.isCrouching then
+			local crouchAttackMap = {
+				Punch = "CrouchPunch",
+				HeavyPunch = "CrouchHeavy",
+			}
+			if crouchAttackMap[type] and Attacks[crouchAttackMap[type]] then
+				actualType = crouchAttackMap[type]
+			end
 		end
 	end
 

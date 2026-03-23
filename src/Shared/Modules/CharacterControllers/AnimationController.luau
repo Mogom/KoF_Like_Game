@@ -139,6 +139,12 @@ function AnimationController.new(context)
 	self.animations.Launch_R = tryLoadSequence(self.animator, AnimationsTest, "Launch_R") or self.animations.AirHurt_R
 	self.animations.Launch_L = tryLoadSequence(self.animator, AnimationsTest, "Launch_L") or self.animations.AirHurt_L
 
+	-- Special Move animations
+	self.animations.Fireball_R = tryLoadSequence(self.animator, AnimationsTest, "Fireball_R") or self.animations.HeavyPunch_R
+	self.animations.Fireball_L = tryLoadSequence(self.animator, AnimationsTest, "Fireball_L") or self.animations.HeavyPunch_L
+	self.animations.Uppercut_R = tryLoadSequence(self.animator, AnimationsTest, "Uppercut_R") or self.animations.HeavyPunch_R
+	self.animations.Uppercut_L = tryLoadSequence(self.animator, AnimationsTest, "Uppercut_L") or self.animations.HeavyPunch_L
+
 	return self
 end
 
@@ -353,6 +359,15 @@ function AnimationController:LoadOpponentAnimations(opponentCharacter)
 		or self.opponentAnimations.AirHurt_R
 	self.opponentAnimations.Launch_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Launch_L")
 		or self.opponentAnimations.AirHurt_L
+
+	self.opponentAnimations.Fireball_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Fireball_R")
+		or self.opponentAnimations.HeavyPunch_R
+	self.opponentAnimations.Fireball_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Fireball_L")
+		or self.opponentAnimations.HeavyPunch_L
+	self.opponentAnimations.Uppercut_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Uppercut_R")
+		or self.opponentAnimations.HeavyPunch_R
+	self.opponentAnimations.Uppercut_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Uppercut_L")
+		or self.opponentAnimations.HeavyPunch_L
 
 	self.currentOpponentAnimation = nil
 	self.currentOpponentAnimationName = nil
