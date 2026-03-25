@@ -4,7 +4,7 @@ local RunService = game:GetService("RunService")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Combat = Modules:WaitForChild("Combat")
 
-local Attacks = require(Combat:WaitForChild("Attacks"))
+local DefaultAttacks = require(Combat:WaitForChild("Attacks"))
 local Hitbox = require(Combat:WaitForChild("Hitbox"))
 local SoundManager = require(Combat:WaitForChild("SoundManager"))
 local HitstopService = require(Combat:WaitForChild("HitstopService"))
@@ -20,6 +20,9 @@ function CombatController.new(context, animationController)
 
 	self.context = context
 	self.animationController = animationController
+
+	-- Usa ataques del personaje seleccionado, o los globales como fallback
+	self.attacks = context.attacks or DefaultAttacks
 
 	self.context.attackLocked = false
 	self.context.lastAttack = nil
@@ -304,8 +307,8 @@ function CombatController:ApplyHitReaction(hitData)
 	self.context.machine:SetState("Hitstun")
 	self.animationController:PlayAnimation(hitAnimation, 0.03)
 
-	-- Flash visual al recibir el golpe
-	VFXService.FlashCharacter(self.context.character, 0.08)
+	-- Hurtflash pulsante durante hitstop (o flash simple si no hay hitstop)
+	VFXService.HurtFlash(self.context.character, hitstopFrames)
 
 	if hitstopFrames > 0 then
 		local animsToFreeze = {}
@@ -485,13 +488,16 @@ function CombatController:RegisterStates(machine)
 
 			-- =============================================
 			-- 🏃 ATTACK DASH: Desplazamiento durante ataque
+			-- DashDistance > 0 → avanza hacia el oponente
+			-- DashDistance < 0 → retrocede (se aleja del oponente)
 			-- =============================================
-			if attack.AttackDash and attack.DashDistance and attack.DashDistance > 0 then
+			if attack.AttackDash and attack.DashDistance and attack.DashDistance ~= 0 then
 				local dashFrameStart = attack.DashFrameStart or 1
 				local dashDuration = attack.DashDuration or 4
-				local dashDistance = attack.DashDistance
+				local dashDistance = math.abs(attack.DashDistance)
+				local dashReverse = attack.DashDistance < 0
 
-				-- Calcular dirección: hacia el oponente
+				-- Calcular dirección base: hacia el oponente
 				local dashDir = 1
 				if self.context.opponentRoot and self.context.opponentRoot.Parent then
 					local enemyX = self.context.opponentRoot.Position.X
@@ -499,6 +505,11 @@ function CombatController:RegisterStates(machine)
 					dashDir = enemyX >= myX and 1 or -1
 				elseif self.context.currentDirection == "L" then
 					dashDir = -1
+				end
+
+				-- Si DashDistance es negativo, invertir dirección (retroceder)
+				if dashReverse then
+					dashDir = -dashDir
 				end
 
 				-- Distancia por frame
@@ -962,9 +973,8 @@ function CombatController:RequestAttack(type)
 			return
 		end
 
-		local attack = Attacks[airType]
+		local attack = self.attacks[airType]
 		if not attack then
-			-- Si no existe el ataque aéreo, no hacer nada
 			return
 		end
 
@@ -992,19 +1002,19 @@ function CombatController:RequestAttack(type)
 	-- Los movimientos especiales omiten este mapeo
 	-- =============================================
 	local actualType = type
-	if not (Attacks[type] and Attacks[type].IsSpecial) then
+	if not (self.attacks[type] and self.attacks[type].IsSpecial) then
 		if self.context.isCrouching then
 			local crouchAttackMap = {
 				Punch = "CrouchPunch",
 				HeavyPunch = "CrouchHeavy",
 			}
-			if crouchAttackMap[type] and Attacks[crouchAttackMap[type]] then
+			if crouchAttackMap[type] and self.attacks[crouchAttackMap[type]] then
 				actualType = crouchAttackMap[type]
 			end
 		end
 	end
 
-	local attack = Attacks[actualType]
+	local attack = self.attacks[actualType]
 	if not attack then
 		warn("❌ Attack not found:", actualType)
 		return
@@ -1085,6 +1095,9 @@ function CombatController:ApplyLocalHitPrediction(victimCharacter, attackData)
 	end
 
 	self.animationController:PlayOpponentAnimation(hitAnimation .. "_" .. opponentDir, 0.03)
+
+	-- Hurtflash en la víctima (predicción local)
+	VFXService.HurtFlash(victimCharacter, hitstopFrames)
 
 	self.opponentPredictedHitstunId += 1
 	local predictionId = self.opponentPredictedHitstunId

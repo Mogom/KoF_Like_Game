@@ -4,20 +4,21 @@ local RunService = game:GetService("RunService")
 local KeyframeSequenceProvider = game:GetService("KeyframeSequenceProvider")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Character = Modules:WaitForChild("Character")
+local Characters = Modules:WaitForChild("Characters")
 local Combat = Modules:WaitForChild("Combat")
 
-local AnimationsFolder = Character:WaitForChild("Animations")
-local AnimationsTest = AnimationsFolder:WaitForChild("Test")
+local CharacterRegistry = require(Characters:WaitForChild("CharacterRegistry"))
 
 local HitstopService = require(Combat:WaitForChild("HitstopService"))
+local VFXService = require(Combat:WaitForChild("VFXService"))
 
 -- Controlador del dummy de entrenamiento: recibe hits, pushback, facing y regen
 local DummyController = {}
 DummyController.__index = DummyController
 
 -- Constructor: inicializa dummy con posición, animaciones y listeners
-function DummyController.new(character)
+-- characterName (opcional): personaje del dummy (para cargar sus animaciones)
+function DummyController.new(character, characterName)
 	local self = setmetatable({}, DummyController)
 
 	self.character = character
@@ -38,6 +39,38 @@ function DummyController.new(character)
 
 	local animator = self.humanoid:WaitForChild("Animator")
 	self.animator = animator
+
+	-- Resolver carpeta de animaciones del personaje del dummy
+	local AnimationsTest = nil
+	characterName = characterName or CharacterRegistry.GetDefault()
+	if characterName then
+		local charFolder = Characters:FindFirstChild(characterName)
+		if charFolder then
+			local anims = charFolder:FindFirstChild("Animations")
+			if anims then
+				AnimationsTest = anims:FindFirstChild("Test")
+			end
+		end
+	end
+
+	-- Fallback: intentar con el primer personaje que tenga animaciones
+	if not AnimationsTest then
+		local defaultName = CharacterRegistry.GetDefault()
+		if defaultName then
+			local charFolder = Characters:FindFirstChild(defaultName)
+			if charFolder then
+				local anims = charFolder:FindFirstChild("Animations")
+				if anims then
+					AnimationsTest = anims:FindFirstChild("Test")
+				end
+			end
+		end
+	end
+
+	if not AnimationsTest then
+		warn("❌ DummyController: No animation folder found for", characterName or "any character")
+		return nil
+	end
 
 	local function loadSequence(sequence)
 		local anim = Instance.new("Animation")
@@ -285,6 +318,9 @@ function DummyController:OnHit(hitData)
 	local pushback = hitData.Pushback or 0
 	local hitstopFrames = hitData.HitstopFrames or 0
 	local hitstunDuration = hitData.HitstunDuration or 0.35
+
+	-- Hurtflash pulsante en el dummy
+	VFXService.HurtFlash(self.character, hitstopFrames)
 
 	-- =============================================
 	-- 🧊 HITSTOP: Congelar animación del dummy

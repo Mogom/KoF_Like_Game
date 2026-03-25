@@ -29,20 +29,30 @@ src/
     │   ├── CharacterController       # Orquestador: crea Motor, Combat, Animation; loop principal
     │   ├── CharacterMotor            # Movimiento: walk, push, jump, dodge, plane lock, colisión
     │   ├── CombatController          # Combate: hit reactions, hitstun, knockdown, predicción
-    │   └── AnimationController       # Carga y reproduce animaciones con dirección (_R/_L)
+    │   └── AnimationController       # Carga y reproduce animaciones per-character con dirección (_R/_L)
+    │
+    ├── Characters/                  # Sistema de personajes
+    │   ├── BaseCharacter             # Clase padre: Info, Attacks, Commands, Skins, GetAnimationsFolder()
+    │   ├── CharacterRegistry         # Registro central de personajes disponibles
+    │   ├── Ryu/                      # Template #1: equilibrado, fireball + uppercut
+    │   │   ├── Ryu                   # Datos del personaje (Info, Attacks, Commands, Skins)
+    │   │   └── Animations/Test/      # Animaciones propias de Ryu (_R/_L)
+    │   └── Ken/                      # Template #2: rushdown agresivo, más rápido
+    │       ├── Ken                   # Datos del personaje
+    │       └── Animations/Test/      # Animaciones propias de Ken (_R/_L)
     │
     ├── Combat/                      # Sistemas de combate individuales
-    │   ├── Attacks                   # Tabla de datos de todos los ataques (frames, pushback, etc.)
+    │   ├── Attacks                   # Tabla GLOBAL de ataques (fallback si no hay personaje)
     │   ├── Hitbox                    # Crea hitbox temporal, detecta colisión con hurtboxes
     │   ├── Hurtbox                   # Crea hurtbox weldeada al HumanoidRootPart
     │   ├── DamageService             # Cliente: envía FireServer con datos del ataque
     │   ├── HitstopService            # Congela animaciones y movimiento por N frames
-    │   ├── DummyController           # IA del dummy: recibe hits, pushback, regen
+    │   ├── DummyController           # IA del dummy: recibe hits, pushback, regen (per-character anims)
     │   ├── CameraHandler             # Cámara lateral 2.5D con zoom dinámico
     │   ├── SoundManager              # Reproduce efectos de sonido posicionales
     │   ├── InputBuffer               # Buffer temporal de inputs con match de secuencias
-    │   ├── CommandParser             # Parsea el buffer para detectar comandos (Fireball, etc.)
-    │   ├── CommandList               # Define secuencias de input → nombre de comando
+    │   ├── CommandParser             # Parsea buffer (soporta comandos por personaje o globales)
+    │   ├── CommandList               # Define secuencias de input GLOBALES → nombre de comando
     │   ├── StateMachine              # FSM genérica: AddState, SetState, Update
     │   └── CharacterController_Legacy # Versión anterior (no se usa, referencia)
     │
@@ -51,7 +61,10 @@ src/
     │   ├── UIBuilder                 # Factory de elementos de UI con helpers
     │   └── Components/
     │       ├── MainMenuComponent     # Menú principal: Training / Versus
-    │       └── GameHUDComponent      # HUD de pelea: barras de vida, timer
+    │       ├── GameHUDComponent      # HUD de pelea: barras de vida, timer
+    │       ├── PlayMenuComponent     # Selección de modo de juego
+    │       ├── CharacterSelectComponent # Selección de personaje (simple o dual para Training)
+    │       └── PlaceholderScreen     # Pantallas "Coming soon"
     │
     └── Utilities/
         └── GameModeManager           # Maneja matchmaking, spawns, Training/Versus
@@ -66,11 +79,56 @@ src/
 ```
 Jugador entra → UIManager muestra menú principal
   ↓
-Click "Training" → FireServer(StartTraining)
+Click "Training" → CharacterSelectComponent (modo dual: jugador + dummy)
   ↓
-GameServer → GameModeManager.StartTrainingMode()
+Confirmar selección → SetAttribute("SelectedCharacter", nombre)
+                    → SetAttribute("SelectedDummyCharacter", dummyNombre)
+  ↓
+FireServer(StartTraining) → GameModeManager.StartTrainingMode()
   ↓
 Asigna spawn, respawnea, notifica cliente con SetOpponent(dummy)
+```
+
+### 1.5 Sistema de Personajes
+
+```
+Characters/
+  ├── BaseCharacter    → Info, Attacks, Commands, Skins, GetAnimationsFolder(), GetSkin()
+  ├── CharacterRegistry → GetAll(), Get(name), GetAttacks(name), GetCommands(name)
+  ├── Ryu/
+  │   ├── Ryu.luau     → Info + Attacks + Commands + Skins
+  │   └── Animations/Test/  → KeyframeSequences con sufijo _R/_L
+  └── Ken/
+      ├── Ken.luau     → Info + Attacks + Commands + Skins
+      └── Animations/Test/  → KeyframeSequences con sufijo _R/_L
+
+Flujo de selección (Versus — selección simple):
+  UIManager → CharacterSelectComponent → Player:SetAttribute("SelectedCharacter")
+  ↓
+  InputClient lee atributo → CharacterController.new(char, machine, "Ryu")
+
+Flujo de selección (Training — selección dual):
+  UIManager → CharacterSelectComponent(dualSelect=true)
+  ↓
+  Player:SetAttribute("SelectedCharacter", playerChar)
+  Player:SetAttribute("SelectedDummyCharacter", dummyChar)
+  ↓
+  InputClient → CharacterController (usa SelectedCharacter)
+  InitializeDummy → DummyController (usa SelectedDummyCharacter)
+
+Carga de animaciones:
+  AnimationController.new(context) → lee context.characterName
+    → resuelve Characters/<Name>/Animations/Test/
+    → carga todas las KeyframeSequences con _R/_L
+  
+  LoadOpponentAnimations(char, opponentCharName)
+    → resuelve carpeta de animaciones del oponente
+    → para dummy: lee SelectedDummyCharacter
+    → para jugador: lee su SelectedCharacter
+
+Sistema de Skins:
+  BaseCharacter:GetSkin(skinName)
+    → Busca en Skins[skinName] → fallback Skins["Default"] → fallback "Dummy"
 ```
 
 ### 2. Inicialización del Personaje
@@ -127,6 +185,7 @@ DamageService.ApplyHit() → FireServer("ApplyDamage")
   ↓
 === CLIENTE ATACANTE ===
   └── _G.LocalHitPrediction → CombatController:ApplyLocalHitPrediction()
+      ├── Hurtflash: pulso blanco/original en víctima durante hitstop
       ├── Hitstop: congela animaciones de ambos
       ├── Pushback predicho: mueve oponente visualmente
       └── Controla CFrame del oponente durante reacción
@@ -135,6 +194,7 @@ DamageService.ApplyHit() → FireServer("ApplyDamage")
   └── GetAttributeChangedSignal("HitResultId") →
       CombatController:ProcessIncomingHit()
       ├── Motor cede CFrame (isInHitReaction = true, solo lee Position.X)
+      ├── Hurtflash: pulso blanco/original durante hitstop
       ├── Hitstop → pushback post-hitstop
       └── task.delay(hitstunDuration) → sync currentX → sale de hitstun
 ```
@@ -176,6 +236,7 @@ Reacción termina: Server → SetNetworkOwner(víctima)
 **Pushback velocity**: `direction * pushback * 0.12` studs/frame  
 **Pushback decay**: `12%` de la velocidad por frame  
 **Hitstop**: duración = `hitstopFrames / 60` segundos  
+**Hurtflash**: pulso blanco/original cada 2 frames durante hitstop (VFXService.HurtFlash)  
 **Duración reacción total**: `hitstop + hitstun + knockdown(0.8) + wakeup(0.4)`  
 **Ownership return delay**: `totalReactionTime + 0.15s buffer`
 
@@ -194,6 +255,7 @@ Reacción termina: Server → SetNetworkOwner(víctima)
 | Término | Significado |
 |---------|-------------|
 | **Hitstop** | Congelamiento mutuo al impactar (hitfreeze) |
+| **Hurtflash** | Flash pulsante blanco/original en la víctima durante hitstop |
 | **Hitstun** | Período post-hitstop donde la víctima no puede actuar |
 | **Pushback** | Empuje horizontal aplicado al recibir un golpe |
 | **Blockstun** | Hitstun al bloquear (menor duración) |

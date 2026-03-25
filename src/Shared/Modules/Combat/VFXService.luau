@@ -67,11 +67,8 @@ end
 -- Crea partículas de chispa alrededor de la posición
 local function spawnSparks(position, color, count, spreadRadius, duration)
 	for _ = 1, count do
-		local offset = Vector3.new(
-			(math.random() - 0.5) * spreadRadius * 2,
-			(math.random() - 0.5) * spreadRadius * 2,
-			0
-		)
+		local offset =
+			Vector3.new((math.random() - 0.5) * spreadRadius * 2, (math.random() - 0.5) * spreadRadius * 2, 0)
 
 		local sparkPos = position + offset
 
@@ -141,11 +138,7 @@ function VFXService.FlashCharacter(character, duration)
 	local originalMaterials = {}
 
 	for _, part in pairs(character:GetDescendants()) do
-		if
-			part:IsA("BasePart")
-			and part.Name ~= "HumanoidRootPart"
-			and part.Name ~= "HurtboxBody"
-		then
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Name ~= "HurtboxBody" then
 			table.insert(parts, part)
 			originalColors[part] = part.Color
 			originalMaterials[part] = part.Material
@@ -159,6 +152,98 @@ function VFXService.FlashCharacter(character, duration)
 			if part and part.Parent then
 				part.Color = originalColors[part] or part.Color
 				part.Material = originalMaterials[part] or part.Material
+			end
+		end
+	end)
+end
+
+-- =============================================
+-- HurtFlash: overlay de color sólido sobre todo el personaje (estilo KOF/SF)
+-- Usa Highlight de Roblox para pintar el modelo completo.
+-- Pulsa visible/invisible cada TOGGLE_INTERVAL frames durante hitstop.
+-- character: Model del personaje
+-- hitstopFrames: frames de hitstop (para sincronizar duración)
+-- =============================================
+local HURTFLASH_COLOR = Color3.fromRGB(187, 187, 187)
+local HURTFLASH_OUTLINE_COLOR = Color3.fromRGB(241, 241, 241)
+local HURTFLASH_FILL_TRANSPARENCY = 0.15
+local HURTFLASH_OUTLINE_TRANSPARENCY = 0.5
+local HURTFLASH_ENABLE_BLINK = false
+local HURTFLASH_BLINK_INTERVAL_FRAMES = 2
+
+-- Limpia cualquier Highlight de hurtflash previo en el personaje
+local function cleanupHurtFlash(character)
+	local existing = character:FindFirstChild("HurtFlashHighlight")
+	if existing then
+		existing:Destroy()
+	end
+end
+
+-- Crea el Highlight configurado para hurtflash
+local function createHurtFlashHighlight(character)
+	cleanupHurtFlash(character)
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "HurtFlashHighlight"
+	highlight.FillColor = HURTFLASH_COLOR
+	highlight.FillTransparency = HURTFLASH_FILL_TRANSPARENCY
+	highlight.OutlineColor = HURTFLASH_OUTLINE_COLOR
+	highlight.OutlineTransparency = HURTFLASH_OUTLINE_TRANSPARENCY
+	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+	highlight.Adornee = character
+	highlight.Parent = character
+
+	return highlight
+end
+
+function VFXService.HurtFlash(character, hitstopFrames)
+	if not character then
+		return
+	end
+
+	hitstopFrames = hitstopFrames or 0
+
+	-- Sin hitstop: flash simple (un solo pulso)
+	if hitstopFrames <= 0 then
+		local highlight = createHurtFlashHighlight(character)
+		task.delay(0.08, function()
+			if highlight and highlight.Parent then
+				highlight:Destroy()
+			end
+		end)
+		return
+	end
+
+	-- Flash pulsante durante hitstop
+	local highlight = createHurtFlashHighlight(character)
+
+	local frameCounter = 0
+	local totalFrames = 0
+	local isVisible = true
+
+	local connection
+	connection = RunService.RenderStepped:Connect(function()
+		totalFrames += 1
+
+		if HURTFLASH_ENABLE_BLINK then
+			frameCounter += 1
+
+			if frameCounter >= HURTFLASH_BLINK_INTERVAL_FRAMES then
+				frameCounter = 0
+				isVisible = not isVisible
+
+				if highlight and highlight.Parent then
+					highlight.FillTransparency = isVisible and HURTFLASH_FILL_TRANSPARENCY or 1
+					highlight.OutlineTransparency = isVisible and HURTFLASH_OUTLINE_TRANSPARENCY or 1
+				end
+			end
+		end
+
+		-- Terminar al alcanzar la duración del hitstop
+		if totalFrames >= hitstopFrames then
+			connection:Disconnect()
+			if highlight and highlight.Parent then
+				highlight:Destroy()
 			end
 		end
 	end)

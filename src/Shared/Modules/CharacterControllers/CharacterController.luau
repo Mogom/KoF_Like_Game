@@ -8,6 +8,8 @@ local CharacterControllers = Modules:WaitForChild("CharacterControllers")
 local AnimationController = require(CharacterControllers:WaitForChild("AnimationController"))
 local CharacterMotor = require(CharacterControllers:WaitForChild("CharacterMotor"))
 local CombatController = require(CharacterControllers:WaitForChild("CombatController"))
+local Characters = Modules:WaitForChild("Characters")
+local CharacterRegistry = require(Characters:WaitForChild("CharacterRegistry"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local RemoteEvents = Remotes:WaitForChild("Events")
@@ -41,7 +43,9 @@ local function findOpponent()
 end
 
 -- Constructor: inicializa context, sub-controladores y conecta RenderStepped + eventos
-function CharacterController.new(character, machine)
+-- characterName (opcional): nombre del personaje seleccionado (e.g. "Ryu", "Ken")
+--   Si no se pasa, usa datos globales (Attacks.luau + CommandList.luau)
+function CharacterController.new(character, machine, characterName)
 	local self = setmetatable({}, CharacterController)
 
 	local humanoid = character:WaitForChild("Humanoid")
@@ -51,6 +55,15 @@ function CharacterController.new(character, machine)
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
 	humanoid.AutoRotate = false
 
+	-- Cargar datos del personaje seleccionado
+	local charData = characterName and CharacterRegistry.Get(characterName) or nil
+	local charInfo = charData and charData.Info or nil
+	local charAttacks = charData and charData.Attacks or nil
+	local charCommands = charData and charData:GetSortedCommands() or nil
+
+	-- Aplicar stats del personaje
+	local walkSpeed = (charInfo and charInfo.WalkSpeed) or 16
+
 	local context = {
 		character = character,
 		humanoid = humanoid,
@@ -59,12 +72,17 @@ function CharacterController.new(character, machine)
 		machine = machine,
 		hurtbox = nil,
 
+		-- Datos del personaje seleccionado
+		characterName = characterName,
+		attacks = charAttacks, -- Ataques específicos (o nil → usa globales)
+		commands = charCommands, -- Comandos específicos (o nil → usa globales)
+
 		opponent = nil,
 		opponentRoot = nil,
 
 		moveDirection = 0,
 		currentDirection = "R",
-		speed = 16,
+		speed = walkSpeed,
 		isCrouching = false,
 		crouchSpeedMultiplier = 0.2,
 		lockedZ = root.Position.Z,
@@ -193,7 +211,19 @@ function CharacterController.new(character, machine)
 		if opponentCharacter and opponentCharacter:FindFirstChild("HumanoidRootPart") then
 			self:SetOpponent(opponentCharacter.HumanoidRootPart)
 
-			self.animationController:LoadOpponentAnimations(opponentCharacter)
+			-- Resolver nombre de personaje del oponente
+			local opponentCharName = nil
+			local Players = game:GetService("Players")
+			local opponentPlayer = Players:GetPlayerFromCharacter(opponentCharacter)
+			if opponentPlayer then
+				-- Oponente es un jugador: leer su SelectedCharacter
+				opponentCharName = opponentPlayer:GetAttribute("SelectedCharacter")
+			else
+				-- Oponente es un dummy: leer SelectedDummyCharacter del jugador local
+				opponentCharName = Players.LocalPlayer:GetAttribute("SelectedDummyCharacter")
+			end
+
+			self.animationController:LoadOpponentAnimations(opponentCharacter, opponentCharName)
 
 			local CameraHandler = require(Combat:WaitForChild("CameraHandler"))
 			if CameraHandler.SetOpponent then

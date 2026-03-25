@@ -2,10 +2,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local KeyframeSequenceProvider = game:GetService("KeyframeSequenceProvider")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
-local Character = Modules:WaitForChild("Character")
-
-local AnimationsFolder = Character:WaitForChild("Animations")
-local AnimationsTest = AnimationsFolder:WaitForChild("Test")
+local Characters = Modules:WaitForChild("Characters")
+local CharacterRegistry = require(Characters:WaitForChild("CharacterRegistry"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local RemoteEvents = Remotes:WaitForChild("Events")
@@ -16,6 +14,42 @@ local AnimationController = {}
 AnimationController.__index = AnimationController
 
 local DEBUG_ANIMATION = false
+
+-- Resuelve la carpeta de animaciones para un personaje dado
+-- Busca: Characters/<characterName>/Animations/Test
+-- Si no existe, usa el primer personaje registrado como fallback
+local function getAnimationsFolder(characterName)
+	if characterName then
+		local charFolder = Characters:FindFirstChild(characterName)
+		if charFolder then
+			local anims = charFolder:FindFirstChild("Animations")
+			if anims then
+				local test = anims:FindFirstChild("Test")
+				if test then
+					return test
+				end
+			end
+		end
+		warn("⚠️ No animation folder for character:", characterName, "— using fallback")
+	end
+
+	-- Fallback: usar el primer personaje que tenga animaciones
+	local defaultName = CharacterRegistry.GetDefault()
+	if defaultName and defaultName ~= characterName then
+		local charFolder = Characters:FindFirstChild(defaultName)
+		if charFolder then
+			local anims = charFolder:FindFirstChild("Animations")
+			if anims then
+				local test = anims:FindFirstChild("Test")
+				if test then
+					return test
+				end
+			end
+		end
+	end
+
+	error("❌ No animation folder found for any character!")
+end
 
 -- Carga un KeyframeSequence y retorna el AnimationTrack
 local function loadSequence(animator, sequence)
@@ -46,6 +80,9 @@ function AnimationController.new(context)
 	self.opponentAnimations = {}
 	self.currentOpponentAnimation = nil
 	self.currentOpponentAnimationName = nil
+
+	-- Resolver carpeta de animaciones del personaje seleccionado
+	local AnimationsTest = getAnimationsFolder(context.characterName)
 
 	-- Animaciones base (existentes)
 	self.animations = {
@@ -140,10 +177,14 @@ function AnimationController.new(context)
 	self.animations.Launch_L = tryLoadSequence(self.animator, AnimationsTest, "Launch_L") or self.animations.AirHurt_L
 
 	-- Special Move animations
-	self.animations.Fireball_R = tryLoadSequence(self.animator, AnimationsTest, "Fireball_R") or self.animations.HeavyPunch_R
-	self.animations.Fireball_L = tryLoadSequence(self.animator, AnimationsTest, "Fireball_L") or self.animations.HeavyPunch_L
-	self.animations.Uppercut_R = tryLoadSequence(self.animator, AnimationsTest, "Uppercut_R") or self.animations.HeavyPunch_R
-	self.animations.Uppercut_L = tryLoadSequence(self.animator, AnimationsTest, "Uppercut_L") or self.animations.HeavyPunch_L
+	self.animations.Fireball_R = tryLoadSequence(self.animator, AnimationsTest, "Fireball_R")
+		or self.animations.HeavyPunch_R
+	self.animations.Fireball_L = tryLoadSequence(self.animator, AnimationsTest, "Fireball_L")
+		or self.animations.HeavyPunch_L
+	self.animations.Uppercut_R = tryLoadSequence(self.animator, AnimationsTest, "Uppercut_R")
+		or self.animations.HeavyPunch_R
+	self.animations.Uppercut_L = tryLoadSequence(self.animator, AnimationsTest, "Uppercut_L")
+		or self.animations.HeavyPunch_L
 
 	return self
 end
@@ -248,7 +289,8 @@ function AnimationController:RefreshLocomotionAnimation()
 end
 
 -- Carga animaciones del oponente para reproducir localmente (predicción visual)
-function AnimationController:LoadOpponentAnimations(opponentCharacter)
+-- opponentCharacterName: nombre del personaje del oponente (para cargar sus animaciones)
+function AnimationController:LoadOpponentAnimations(opponentCharacter, opponentCharacterName)
 	if not opponentCharacter then
 		return
 	end
@@ -265,108 +307,111 @@ function AnimationController:LoadOpponentAnimations(opponentCharacter)
 		return
 	end
 
+	-- Resolver carpeta de animaciones del oponente
+	local OpponentAnimsTest = getAnimationsFolder(opponentCharacterName)
+
 	self.opponentAnimations = {
-		Idle_R = loadSequence(opponentAnimator, AnimationsTest.Idle_R),
-		Idle_L = loadSequence(opponentAnimator, AnimationsTest.Idle_L),
+		Idle_R = loadSequence(opponentAnimator, OpponentAnimsTest.Idle_R),
+		Idle_L = loadSequence(opponentAnimator, OpponentAnimsTest.Idle_L),
 
-		Walk_R = loadSequence(opponentAnimator, AnimationsTest.Walk_R),
-		Walk_L = loadSequence(opponentAnimator, AnimationsTest.Walk_L),
+		Walk_R = loadSequence(opponentAnimator, OpponentAnimsTest.Walk_R),
+		Walk_L = loadSequence(opponentAnimator, OpponentAnimsTest.Walk_L),
 
-		Punch_R = loadSequence(opponentAnimator, AnimationsTest.Punch_R),
-		Punch_L = loadSequence(opponentAnimator, AnimationsTest.Punch_L),
+		Punch_R = loadSequence(opponentAnimator, OpponentAnimsTest.Punch_R),
+		Punch_L = loadSequence(opponentAnimator, OpponentAnimsTest.Punch_L),
 
-		Punch2_R = loadSequence(opponentAnimator, AnimationsTest.Punch2_R),
-		Punch2_L = loadSequence(opponentAnimator, AnimationsTest.Punch2_L),
+		Punch2_R = loadSequence(opponentAnimator, OpponentAnimsTest.Punch2_R),
+		Punch2_L = loadSequence(opponentAnimator, OpponentAnimsTest.Punch2_L),
 
-		Punch3_R = loadSequence(opponentAnimator, AnimationsTest.Punch3_R),
-		Punch3_L = loadSequence(opponentAnimator, AnimationsTest.Punch3_L),
+		Punch3_R = loadSequence(opponentAnimator, OpponentAnimsTest.Punch3_R),
+		Punch3_L = loadSequence(opponentAnimator, OpponentAnimsTest.Punch3_L),
 
-		HeavyPunch_R = loadSequence(opponentAnimator, AnimationsTest.Heavy_R),
-		HeavyPunch_L = loadSequence(opponentAnimator, AnimationsTest.Heavy_R),
+		HeavyPunch_R = loadSequence(opponentAnimator, OpponentAnimsTest.Heavy_R),
+		HeavyPunch_L = loadSequence(opponentAnimator, OpponentAnimsTest.Heavy_R),
 
-		HurtLight_R = loadSequence(opponentAnimator, AnimationsTest.HurtLight_R),
-		HurtLight_L = loadSequence(opponentAnimator, AnimationsTest.HurtLight_R),
+		HurtLight_R = loadSequence(opponentAnimator, OpponentAnimsTest.HurtLight_R),
+		HurtLight_L = loadSequence(opponentAnimator, OpponentAnimsTest.HurtLight_R),
 
-		Crouch_R = loadSequence(opponentAnimator, AnimationsTest.Crouch_R),
-		Crouch_L = loadSequence(opponentAnimator, AnimationsTest.Crouch_R),
+		Crouch_R = loadSequence(opponentAnimator, OpponentAnimsTest.Crouch_R),
+		Crouch_L = loadSequence(opponentAnimator, OpponentAnimsTest.Crouch_R),
 
-		CrouchWalk_R = loadSequence(opponentAnimator, AnimationsTest.CrouchWalk_R),
-		CrouchWalk_L = loadSequence(opponentAnimator, AnimationsTest.CrouchWalk_R),
+		CrouchWalk_R = loadSequence(opponentAnimator, OpponentAnimsTest.CrouchWalk_R),
+		CrouchWalk_L = loadSequence(opponentAnimator, OpponentAnimsTest.CrouchWalk_R),
 	}
 
 	-- Nuevas animaciones del oponente con fallback
-	--self.opponentAnimations.Block_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Block_R")
+	--self.opponentAnimations.Block_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Block_R")
 	--	or self.opponentAnimations.Idle_R
-	--self.opponentAnimations.Block_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Block_L")
+	--self.opponentAnimations.Block_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Block_L")
 	--	or self.opponentAnimations.Idle_L
 
-	--self.opponentAnimations.CrouchBlock_R = tryLoadSequence(opponentAnimator, AnimationsTest, "CrouchBlock_R")
+	--self.opponentAnimations.CrouchBlock_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchBlock_R")
 	--	or self.opponentAnimations.Block_R
-	--self.opponentAnimations.CrouchBlock_L = tryLoadSequence(opponentAnimator, AnimationsTest, "CrouchBlock_L")
+	--self.opponentAnimations.CrouchBlock_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchBlock_L")
 	--	or self.opponentAnimations.Block_L
 
-	--self.opponentAnimations.BlockHit_R = tryLoadSequence(opponentAnimator, AnimationsTest, "BlockHit_R")
+	--self.opponentAnimations.BlockHit_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "BlockHit_R")
 	--	or self.opponentAnimations.Block_R
-	--self.opponentAnimations.BlockHit_L = tryLoadSequence(opponentAnimator, AnimationsTest, "BlockHit_L")
+	--self.opponentAnimations.BlockHit_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "BlockHit_L")
 	--	or self.opponentAnimations.Block_L
 
-	self.opponentAnimations.CrouchPunch_R = tryLoadSequence(opponentAnimator, AnimationsTest, "CrouchPunch_R")
+	self.opponentAnimations.CrouchPunch_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchPunch_R")
 		or self.opponentAnimations.Punch_R
-	self.opponentAnimations.CrouchPunch_L = tryLoadSequence(opponentAnimator, AnimationsTest, "CrouchPunch_L")
+	self.opponentAnimations.CrouchPunch_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchPunch_L")
 		or self.opponentAnimations.Punch_L
 
-	self.opponentAnimations.CrouchHeavy_R = tryLoadSequence(opponentAnimator, AnimationsTest, "CrouchHeavy_R")
+	self.opponentAnimations.CrouchHeavy_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchHeavy_R")
 		or self.opponentAnimations.HeavyPunch_R
-	self.opponentAnimations.CrouchHeavy_L = tryLoadSequence(opponentAnimator, AnimationsTest, "CrouchHeavy_L")
+	self.opponentAnimations.CrouchHeavy_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchHeavy_L")
 		or self.opponentAnimations.HeavyPunch_L
 
-	self.opponentAnimations.Dodge_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Dodge_R")
+	self.opponentAnimations.Dodge_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Dodge_R")
 		or self.opponentAnimations.Idle_R
-	self.opponentAnimations.Dodge_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Dodge_L")
+	self.opponentAnimations.Dodge_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Dodge_L")
 		or self.opponentAnimations.Idle_L
 
-	self.opponentAnimations.Jump_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Jump_R")
+	self.opponentAnimations.Jump_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Jump_R")
 		or self.opponentAnimations.Idle_R
-	self.opponentAnimations.Jump_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Jump_L")
+	self.opponentAnimations.Jump_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Jump_L")
 		or self.opponentAnimations.Idle_L
 
-	self.opponentAnimations.AirPunch_R = tryLoadSequence(opponentAnimator, AnimationsTest, "AirPunch_R")
+	self.opponentAnimations.AirPunch_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "AirPunch_R")
 		or self.opponentAnimations.Punch_R
-	self.opponentAnimations.AirPunch_L = tryLoadSequence(opponentAnimator, AnimationsTest, "AirPunch_L")
+	self.opponentAnimations.AirPunch_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "AirPunch_L")
 		or self.opponentAnimations.Punch_L
 
-	self.opponentAnimations.AirHeavy_R = tryLoadSequence(opponentAnimator, AnimationsTest, "AirHeavy_R")
+	self.opponentAnimations.AirHeavy_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "AirHeavy_R")
 		or self.opponentAnimations.HeavyPunch_R
-	self.opponentAnimations.AirHeavy_L = tryLoadSequence(opponentAnimator, AnimationsTest, "AirHeavy_L")
+	self.opponentAnimations.AirHeavy_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "AirHeavy_L")
 		or self.opponentAnimations.HeavyPunch_L
 
-	self.opponentAnimations.AirHurt_R = tryLoadSequence(opponentAnimator, AnimationsTest, "AirHurt_R")
+	self.opponentAnimations.AirHurt_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "AirHurt_R")
 		or self.opponentAnimations.HurtLight_R
-	self.opponentAnimations.AirHurt_L = tryLoadSequence(opponentAnimator, AnimationsTest, "AirHurt_L")
+	self.opponentAnimations.AirHurt_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "AirHurt_L")
 		or self.opponentAnimations.HurtLight_L
 
-	self.opponentAnimations.Knockdown_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Knockdown_R")
+	self.opponentAnimations.Knockdown_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Knockdown_R")
 		or self.opponentAnimations.HurtLight_R
-	self.opponentAnimations.Knockdown_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Knockdown_L")
+	self.opponentAnimations.Knockdown_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Knockdown_L")
 		or self.opponentAnimations.HurtLight_L
 
-	self.opponentAnimations.Wakeup_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Wakeup_R")
+	self.opponentAnimations.Wakeup_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Wakeup_R")
 		or self.opponentAnimations.Idle_R
-	self.opponentAnimations.Wakeup_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Wakeup_L")
+	self.opponentAnimations.Wakeup_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Wakeup_L")
 		or self.opponentAnimations.Idle_L
 
-	self.opponentAnimations.Launch_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Launch_R")
+	self.opponentAnimations.Launch_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Launch_R")
 		or self.opponentAnimations.AirHurt_R
-	self.opponentAnimations.Launch_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Launch_L")
+	self.opponentAnimations.Launch_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Launch_L")
 		or self.opponentAnimations.AirHurt_L
 
-	self.opponentAnimations.Fireball_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Fireball_R")
+	self.opponentAnimations.Fireball_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Fireball_R")
 		or self.opponentAnimations.HeavyPunch_R
-	self.opponentAnimations.Fireball_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Fireball_L")
+	self.opponentAnimations.Fireball_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Fireball_L")
 		or self.opponentAnimations.HeavyPunch_L
-	self.opponentAnimations.Uppercut_R = tryLoadSequence(opponentAnimator, AnimationsTest, "Uppercut_R")
+	self.opponentAnimations.Uppercut_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Uppercut_R")
 		or self.opponentAnimations.HeavyPunch_R
-	self.opponentAnimations.Uppercut_L = tryLoadSequence(opponentAnimator, AnimationsTest, "Uppercut_L")
+	self.opponentAnimations.Uppercut_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Uppercut_L")
 		or self.opponentAnimations.HeavyPunch_L
 
 	self.currentOpponentAnimation = nil

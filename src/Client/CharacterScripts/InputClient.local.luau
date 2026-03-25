@@ -1,5 +1,5 @@
 -- Cliente: captura teclas (WASD, Space, J/K), mapea a acciones del CharacterController
--- InputClient (mejorado): detecta W/Space para jump y S para crouch robustamente
+-- Soporta personaje seleccionado via atributo "SelectedCharacter" en el Player
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -19,9 +19,15 @@ local CameraHandler = require(Combat:WaitForChild("CameraHandler"))
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 
+-- Leer personaje seleccionado del atributo del jugador (seteado por UIManager)
+local selectedCharacter = player:GetAttribute("SelectedCharacter") or nil
+
 local buffer = InputBuffer.new(0.35)
 local machine = StateMachine.new("Idle")
-local controller = CharacterController.new(character, machine)
+local controller = CharacterController.new(character, machine, selectedCharacter)
+
+-- Comandos del personaje (si hay uno seleccionado)
+local characterCommands = controller.context and controller.context.commands or nil
 local enemy = workspace:FindFirstChild("Enemy") or workspace:FindFirstChild("TrainingDummy")
 if enemy then
 	local enemyRoot = enemy:FindFirstChild("HumanoidRootPart")
@@ -42,6 +48,14 @@ local KeyMap = {
 	[Enum.UserInputType.MouseButton1] = "Punch",
 	[Enum.UserInputType.MouseButton2] = "HeavyPunch",
 	[Enum.KeyCode.LeftShift] = "Dodge",
+
+	[Enum.KeyCode.ButtonX] = "Punch", -- Gamepad X
+	[Enum.KeyCode.ButtonB] = "HeavyPunch", -- Gamepad B
+	[Enum.KeyCode.ButtonA] = "Up", -- Gamepad A
+	[Enum.KeyCode.DPadDown] = "Down", -- Gamepad Stick Down
+	[Enum.KeyCode.DPadUp] = "Up", -- Gamepad Stick Up
+	[Enum.KeyCode.DPadRight] = "Forward", -- Gamepad Stick Right
+	[Enum.KeyCode.DPadLeft] = "Back", -- Gamepad Stick Left
 }
 
 -- Estado por tecla (evita flicker cuando cambias rápido)
@@ -155,9 +169,9 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
--- Loop de parser (igual que tenías)
+-- Loop de parser: usa comandos del personaje si están disponibles
 RunService.RenderStepped:Connect(function()
-	local command = CommandParser.Parse(buffer)
+	local command = CommandParser.Parse(buffer, characterCommands)
 	if not command then
 		return
 	end

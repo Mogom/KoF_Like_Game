@@ -41,6 +41,7 @@ local MainMenuComponent = require(Components:WaitForChild("MainMenuComponent"))
 local GameHUDComponent = require(Components:WaitForChild("GameHUDComponent"))
 local PlayMenuComponent = require(Components:WaitForChild("PlayMenuComponent"))
 local PlaceholderScreen = require(Components:WaitForChild("PlaceholderScreen"))
+local CharacterSelectComponent = require(Components:WaitForChild("CharacterSelectComponent"))
 
 -- Remote Events
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -79,6 +80,35 @@ local function returnToMainMenu()
 end
 
 -- ============================================
+-- HELPER: Selección de personaje antes de un modo
+-- Muestra CharacterSelectComponent, al confirmar llama onReady(characterName)
+-- dualSelect: si true, selecciona jugador + dummy → onReady(charName, dummyCharName)
+-- ============================================
+
+local function showCharacterSelect(onReady, onCancel, dualSelect)
+	currentScreen = CharacterSelectComponent.new(playerGui, {
+		dualSelect = dualSelect or false,
+		onConfirm = function(characterName, dummyCharName)
+			-- Guardar selección en atributo del jugador (InputClient lo lee)
+			player:SetAttribute("SelectedCharacter", characterName)
+			if dummyCharName then
+				player:SetAttribute("SelectedDummyCharacter", dummyCharName)
+			end
+			destroyCurrentScreen()
+			if onReady then
+				onReady(characterName, dummyCharName)
+			end
+		end,
+		onBackClick = function()
+			destroyCurrentScreen()
+			if onCancel then
+				onCancel()
+			end
+		end,
+	})
+end
+
+-- ============================================
 -- CALLBACK: Play → abre pantalla de selección de modo
 -- ============================================
 
@@ -89,12 +119,14 @@ local function onPlayClick()
 	mainMenu:hide()
 
 	currentScreen = PlayMenuComponent.new(playerGui, {
-		-- Al pulsar 1V1 → iniciar versus
+		-- Al pulsar 1V1 → selección de personaje → iniciar versus
 		onVersus1v1Click = function()
 			destroyCurrentScreen()
-			StartVersusEvent:FireServer()
-			task.wait(0.5)
-			currentHUD = GameHUDComponent.new(playerGui, player)
+			showCharacterSelect(function(characterName)
+				StartVersusEvent:FireServer()
+				task.wait(0.5)
+				currentHUD = GameHUDComponent.new(playerGui, player)
+			end, returnToMainMenu)
 		end,
 
 		-- Al pulsar Volver → regresar al menú principal
@@ -103,7 +135,7 @@ local function onPlayClick()
 end
 
 -- ============================================
--- CALLBACK: Training → inicia entrenamiento directo
+-- CALLBACK: Training → selección de personaje + dummy → inicia entrenamiento
 -- ============================================
 
 local function onTrainingClick()
@@ -112,10 +144,11 @@ local function onTrainingClick()
 	end
 	mainMenu:hide()
 
-	StartTrainingEvent:FireServer()
-
-	task.wait(0.5)
-	currentHUD = GameHUDComponent.new(playerGui, player)
+	showCharacterSelect(function(characterName, dummyCharName)
+		StartTrainingEvent:FireServer()
+		task.wait(0.5)
+		currentHUD = GameHUDComponent.new(playerGui, player)
+	end, returnToMainMenu, true) -- dualSelect = true
 end
 
 -- ============================================

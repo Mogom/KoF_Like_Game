@@ -1,4 +1,5 @@
 -- Parser de comandos: evalua el InputBuffer contra la CommandList por prioridad
+-- Soporta comandos globales (CommandList) o por personaje (CharacterRegistry)
 local CommandParser = {}
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -6,16 +7,18 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Combat = Modules:WaitForChild("Combat")
 
-local Commands = require(Combat:WaitForChild("CommandList"))
+local DefaultCommands = require(Combat:WaitForChild("CommandList"))
 
 -- ordenar por prioridad
-table.sort(Commands, function(a, b)
+table.sort(DefaultCommands, function(a, b)
 	return a.Priority > b.Priority
 end)
 
 -- Busca el primer comando que hace match con el buffer actual
-function CommandParser.Parse(buffer)
-	for _, command in ipairs(Commands) do
+-- Si se pasan comandos personalizados, los usa en vez de los globales
+function CommandParser.Parse(buffer, customCommands)
+	local commands = customCommands or DefaultCommands
+	for _, command in ipairs(commands) do
 		if buffer:MatchAndConsume(command.Input) then
 			return command.Name
 		end

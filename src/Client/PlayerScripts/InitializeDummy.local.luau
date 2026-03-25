@@ -36,9 +36,12 @@ local function tryInitializeDummy()
 	humanoid.JumpPower = 0
 	humanoid.AutoRotate = false
 
-	DummyController.new(dummy)
+	-- Leer personaje seleccionado para el dummy
+	local dummyCharName = player:GetAttribute("SelectedDummyCharacter")
 
-	print("✅ Training Dummy initialized!")
+	DummyController.new(dummy, dummyCharName)
+
+	print("✅ Training Dummy initialized! Character:", dummyCharName or "default")
 end
 
 task.delay(1, tryInitializeDummy)
