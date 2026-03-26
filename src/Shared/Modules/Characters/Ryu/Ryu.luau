@@ -304,6 +304,11 @@ Ryu.Attacks.Uppercut = {
 	AttackJump = true,
 	JumpHeight = 40,
 	JumpFrameStart = 3,
+	-- AttackDash: avance rápido al inicio del shoryuken
+	AttackDash = true,
+	DashDistance = 3,
+	DashFrameStart = 1,
+	DashDuration = 4,
 	CancelWindow = nil,
 	Hitbox = {
 		Size = Vector3.new(4, 6, 4),

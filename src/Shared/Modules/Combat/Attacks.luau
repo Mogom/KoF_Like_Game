@@ -346,6 +346,12 @@ Attacks.Uppercut = {
 	JumpHeight = 40,
 	JumpFrameStart = 3,
 
+	-- AttackDash: avance rápido al inicio del uppercut
+	AttackDash = true,
+	DashDistance = 3,
+	DashFrameStart = 1,
+	DashDuration = 4,
+
 	CancelWindow = nil,
 
 	Hitbox = {

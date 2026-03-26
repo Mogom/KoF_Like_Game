@@ -39,6 +39,7 @@ function CombatController.new(context, animationController)
 	self.context.hitstunReactionId = 0
 	self.context.lastReceivedHitCounter = self.context.character:GetAttribute("HitCounter") or 0
 	self.context.lastReceivedHitResultId = self.context.character:GetAttribute("HitResultId") or 0
+	self.context.lastLocalPredictionTime = 0
 
 	-- Predicción local del oponente
 	self.opponentPushVelocityX = 0
@@ -66,13 +67,20 @@ function CombatController:_bindHitListener()
 
 		self.context.lastReceivedHitResultId = newId
 
-		-- Si ya estamos en hitstun por este mismo hit (procesado localmente),
-		-- no procesar de nuevo
-		if self.context.isInHitstun then
+		-- Saltar si local prediction ya manejó este hit recientemente (dentro de 0.5s)
+		local now = tick()
+		if now - (self.context.lastLocalPredictionTime or 0) < 0.5 then
 			return
 		end
 
-		self.context.lastReceivedHitResultId = newId
+		-- No procesar si ya estamos en algún estado de reacción a golpe
+		if self.context.isInHitstun
+			or self.context.isKnockedDown
+			or self.context.isInBlockstun
+			or self.context.isInWakeup
+		then
+			return
+		end
 
 		-- CRÍTICO: Usar nuestra posición ACTUAL, no la que el servidor registró.
 		-- El servidor ve una posición desfasada porque el pushback se ejecuta
@@ -634,38 +642,50 @@ function CombatController:RegisterStates(machine)
 				end)
 			end
 
-			task.delay(attack.Startup, function()
-				if self.context.machine:GetState() ~= "Attack" then
-					return
-				end
-
-				local hitbox = Hitbox.new(self.context.root, attack.Hitbox)
-				hitbox.attackData = attack
-
-				-- Efecto visual al conectar el golpe
-				hitbox.onHit = function(hitPosition, direction, _victimCharacter)
-					VFXService.PlayHitEffect(hitPosition, attack.HitType or "Light", direction)
-				end
-
-				local connection
-				connection = RunService.RenderStepped:Connect(function()
-					if hitbox then
-						hitbox:Update()
+			-- Proyectil (e.g. Fireball): spawn en lugar de hitbox local
+			if attack.IsProjectile then
+				local ProjectileService = require(Combat:WaitForChild("ProjectileService"))
+				local dir = self.context.currentDirection == "L" and -1 or 1
+				task.delay(attack.Startup, function()
+					if self.context.machine:GetState() ~= "Attack" then
+						return
 					end
+					ProjectileService.Spawn(self.context.root, attack, dir)
 				end)
-
-				task.delay(attack.Active, function()
-					if hitbox then
-						hitbox:Destroy()
-						hitbox = nil
+			else
+				task.delay(attack.Startup, function()
+					if self.context.machine:GetState() ~= "Attack" then
+						return
 					end
 
-					if connection then
-						connection:Disconnect()
-						connection = nil
+					local hitbox = Hitbox.new(self.context.root, attack.Hitbox)
+					hitbox.attackData = attack
+
+					-- Efecto visual al conectar el golpe
+					hitbox.onHit = function(hitPosition, direction, _victimCharacter)
+						VFXService.PlayHitEffect(hitPosition, attack.HitType or "Light", direction)
 					end
+
+					local connection
+					connection = RunService.RenderStepped:Connect(function()
+						if hitbox then
+							hitbox:Update()
+						end
+					end)
+
+					task.delay(attack.Active, function()
+						if hitbox then
+							hitbox:Destroy()
+							hitbox = nil
+						end
+
+						if connection then
+							connection:Disconnect()
+							connection = nil
+						end
+					end)
 				end)
-			end)
+			end
 
 			task.delay(attack.Startup + attack.Active + attack.Recovery, function()
 				if self.context.machine:GetState() ~= "Attack" then
