@@ -579,9 +579,16 @@ function CharacterMotor:Update(dt)
 	self:UpdateAirState()
 	self:UpdateFacing()
 
+	-- Sincronizar currentX durante reacción a golpe o mientras hay pushback activo.
+	-- Esto previene que ApplyPlaneLockAndRotation sobreescriba la posición
+	-- durante el período de transición al retomar el control.
+	if isInHitReaction or math.abs(self.context.pushVelocityX or 0) > 0.01 then
+		self.context.currentX = root.Position.X
+		self.context.attackLockedX = nil
+	end
+
 	if isInHitReaction then
 		-- Seguir la posición autoritativa del atacante sin escribir CFrame
-		self.context.currentX = root.Position.X
 		self:UpdateDodge(dt)
 		return
 	end
