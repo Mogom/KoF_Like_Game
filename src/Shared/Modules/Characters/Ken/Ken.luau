@@ -116,6 +116,18 @@ Ken.Attacks.HeavyPunch = {
 		Size = Vector3.new(4, 3, 5),
 		Offset = Vector3.new(0, 0, -4),
 	},
+	-- VFX de swing: se reproduce al INICIAR el ataque (no necesita conectar)
+	-- El nombre debe coincidir con un VFX registrado en VFXService.RegisterSwingVFX
+	VFX_Name = "FirePunch",
+	-- VFX de impacto: se reproduce SOLO al conectar el golpe
+	AttackVFX = {
+		Type = "FireHand",
+		Color = Color3.fromRGB(255, 80, 0),
+		CoreColor = Color3.fromRGB(255, 220, 60),
+		Size = 1.8,
+		Duration = 0.35,
+		FlameCount = 12,
+	},
 }
 
 -- ============================================

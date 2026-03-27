@@ -29,6 +29,32 @@ function DummyController.new(character, characterName)
 	self.currentX = self.root.Position.X
 	self.lockedZ = self.root.Position.Z
 
+	-- Encontrar la posición real del suelo con raycast hacia abajo
+	local rayOrigin = self.root.Position
+	local rayDirection = Vector3.new(0, -50, 0)
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = { character }
+	local rayResult = workspace:Raycast(rayOrigin, rayDirection, rayParams)
+	if rayResult then
+		-- Calcular la distancia real desde el centro del root hasta los pies del modelo.
+		-- Esto funciona con cualquier rig (R6, R15, custom) midiendo el punto más bajo.
+		local rootCenterY = self.root.Position.Y
+		local lowestY = rootCenterY
+		for _, part in pairs(character:GetDescendants()) do
+			if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+				local partBottom = part.Position.Y - part.Size.Y / 2
+				if partBottom < lowestY then
+					lowestY = partBottom
+				end
+			end
+		end
+		local rootToFeet = rootCenterY - lowestY
+		self.groundY = rayResult.Position.Y + rootToFeet
+	else
+		self.groundY = self.initialPosition.Y
+	end
+
 	self.humanoid.AutoRotate = false
 	self.humanoid.WalkSpeed = 0
 	self.humanoid.JumpPower = 0
@@ -288,7 +314,7 @@ function DummyController:_startFacingLoop()
 		local faceRight = playerPos.X >= self.currentX
 		local angleY = faceRight and math.rad(-90) or math.rad(90)
 
-		local targetY = self.isInHitstun and myPos.Y or self.initialPosition.Y
+		local targetY = self.isInHitstun and myPos.Y or self.groundY
 
 		self.root.CFrame = CFrame.new(self.currentX, targetY, self.lockedZ) * CFrame.Angles(0, angleY, 0)
 	end)

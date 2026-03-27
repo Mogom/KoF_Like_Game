@@ -1,10 +1,22 @@
 -- Server: Inicializa training dummies con hurtbox y atributos
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Combat = Modules:WaitForChild("Combat")
 
 local Hurtbox = require(Combat:WaitForChild("Hurtbox"))
+
+-- Da network ownership del dummy root al jugador para que la posición
+-- se sincronice correctamente con el servidor (evita hit rejection por distancia).
+local function giveOwnershipToPlayer(dummy, player)
+	local root = dummy:FindFirstChild("HumanoidRootPart")
+	if root then
+		pcall(function()
+			root:SetNetworkOwner(player)
+		end)
+	end
+end
 
 -- Configura un dummy: marca como training dummy y crea su hurtbox
 local function setupDummy(dummy)
@@ -24,6 +36,17 @@ local function setupDummy(dummy)
 
 	Hurtbox.new(dummy)
 	print("🤖 Server dummy hurtbox created for", dummy.Name)
+
+	-- Asignar ownership al primer jugador disponible
+	local firstPlayer = Players:GetPlayers()[1]
+	if firstPlayer then
+		giveOwnershipToPlayer(dummy, firstPlayer)
+	else
+		-- Esperar al primer jugador
+		Players.PlayerAdded:Once(function(player)
+			giveOwnershipToPlayer(dummy, player)
+		end)
+	end
 end
 
 local dummy = workspace:FindFirstChild("Enemy") or workspace:FindFirstChild("TrainingDummy")

@@ -74,7 +74,8 @@ function CombatController:_bindHitListener()
 		end
 
 		-- No procesar si ya estamos en algún estado de reacción a golpe
-		if self.context.isInHitstun
+		if
+			self.context.isInHitstun
 			or self.context.isKnockedDown
 			or self.context.isInBlockstun
 			or self.context.isInWakeup
@@ -494,6 +495,11 @@ function CombatController:RegisterStates(machine)
 				SoundManager.PlaySound(attack.SoundEffect, self.context.root.Position, attack.SoundVolume or 0.5)
 			end
 
+			-- VFX de swing: se reproduce al INICIAR el ataque, no necesita conectar golpe
+			if attack.VFX_Name then
+				VFXService.PlaySwingVFX(attack.VFX_Name, self.context.character, attack)
+			end
+
 			-- =============================================
 			-- 🏃 ATTACK DASH: Desplazamiento durante ataque
 			-- DashDistance > 0 → avanza hacia el oponente
@@ -664,6 +670,10 @@ function CombatController:RegisterStates(machine)
 					-- Efecto visual al conectar el golpe
 					hitbox.onHit = function(hitPosition, direction, _victimCharacter)
 						VFXService.PlayHitEffect(hitPosition, attack.HitType or "Light", direction)
+						-- VFX personalizado del ataque (e.g. FireHand)
+						if attack.AttackVFX then
+							VFXService.PlayAttackVFX(attack.AttackVFX, self.context.character, hitPosition, direction)
+						end
 					end
 
 					local connection

@@ -54,6 +54,10 @@
 	    JumpFrameStart  = 1,
 	    -- Cancel window (opcional):
 	    CancelWindow    = nil,                 -- { Start = N, End = N } o nil
+	    -- VFX de swing (opcional, se reproduce al INICIAR el ataque, NO requiere conectar):
+	    VFX_Name        = nil,                 -- Nombre del VFX registrado en VFXService
+	    -- VFX de impacto (opcional, se reproduce SOLO al conectar):
+	    AttackVFX       = nil,                 -- { Type = "FireHand", Color, CoreColor, Size, ... }
 	    -- Hitbox:
 	    Hitbox = {
 	      Size   = Vector3.new(4, 5, 4),
@@ -122,7 +126,7 @@ function BaseCharacter:GetAttack(attackId)
 	return self.Attacks[attackId]
 end
 
--- Retorna la lista de comandos ordenada por prioridad (mayor primero)  
+-- Retorna la lista de comandos ordenada por prioridad (mayor primero)
 function BaseCharacter:GetSortedCommands()
 	local sorted = table.clone(self.Commands)
 	table.sort(sorted, function(a, b)
