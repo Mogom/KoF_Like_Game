@@ -496,8 +496,20 @@ function CombatController:RegisterStates(machine)
 			end
 
 			-- VFX de swing: se reproduce al INICIAR el ataque, no necesita conectar golpe
-			if attack.VFX_Name then
-				VFXService.PlaySwingVFX(attack.VFX_Name, self.context.character, attack)
+			if attack.VFX_Name and self.context.characterName then
+				-- comboIndex: para combos con VFX_Limbs, indica qué extremidad usar
+				local comboIndex = self.context.punchComboCount or 1
+				if comboIndex < 1 then
+					comboIndex = 1
+				end
+				VFXService.PlaySwingVFX(
+					attack.VFX_Name,
+					self.context.characterName,
+					self.context.character,
+					attack,
+					comboIndex,
+					self.context.currentDirection
+				)
 			end
 
 			-- =============================================
@@ -511,15 +523,17 @@ function CombatController:RegisterStates(machine)
 				local dashDistance = math.abs(attack.DashDistance)
 				local dashReverse = attack.DashDistance < 0
 
-				-- Calcular dirección base: hacia el oponente
-				local dashDir = 1
-				if self.context.opponentRoot and self.context.opponentRoot.Parent then
-					local enemyX = self.context.opponentRoot.Position.X
-					local myX = self.context.currentX or self.context.root.Position.X
-					dashDir = enemyX >= myX and 1 or -1
-				elseif self.context.currentDirection == "L" then
-					dashDir = -1
-				end
+				-- Calcular dirección base: hacia donde mira el personaje
+				local dashDir = self.context.currentDirection == "R" and 1 or -1
+
+				-- DESACTIVADO: Dash hacia el oponente (útil para modos 1v1 clásicos)
+				-- if self.context.opponentRoot and self.context.opponentRoot.Parent then
+				-- 	local enemyX = self.context.opponentRoot.Position.X
+				-- 	local myX = self.context.currentX or self.context.root.Position.X
+				-- 	dashDir = enemyX >= myX and 1 or -1
+				-- elseif self.context.currentDirection == "L" then
+				-- 	dashDir = -1
+				-- end
 
 				-- Si DashDistance es negativo, invertir dirección (retroceder)
 				if dashReverse then

@@ -1,5 +1,6 @@
 -- VFXService: efectos visuales para golpes y reacciones
--- Proporciona PlayHitEffect y FlashCharacter
+-- Proporciona PlayHitEffect, FlashCharacter, HurtFlash, PlayAttackVFX, PlaySwingVFX
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
@@ -387,183 +388,276 @@ function VFXService._playFireHand(config, _character, hitPosition, _direction)
 end
 
 -- =============================================
--- SWING VFX SYSTEM
+-- SWING VFX SYSTEM (basado en carpeta)
 -- VFX que se reproduce durante el ataque, NO requiere conectar el golpe.
 -- Se usa para que ataques pesados/especiales se sientan poderosos.
 --
--- CÓMO AGREGAR UN VFX PERSONALIZADO:
--- 1. Crea una función que reciba (character, attackData) y genere el efecto
--- 2. Regístrala: VFXService.RegisterSwingVFX("MiNombre", miFuncion)
--- 3. En el ataque, pon VFX_Name = "MiNombre"
--- El efecto se disparará automáticamente al iniciar el ataque.
+-- CÓMO AGREGAR UN VFX A UN ATAQUE:
+-- 1. Dentro de la carpeta del personaje (ej: Characters/Ken/), crea una carpeta "VFX"
+-- 2. Dentro de VFX/, coloca un Model o Part con el nombre que quieras (ej: "FirePunch")
+--    → Puede contener ParticleEmitters, Lights, Parts con Neon, lo que quieras
+-- 3. En el ataque, agrega:
+--      VFX_Name = "FirePunch"       → nombre del efecto en la carpeta VFX
+--      VFX_Limb = "RightHand"       → parte del cuerpo donde se posiciona
+--
+-- PROPIEDADES DE VFX EN EL ATAQUE:
+--   VFX_Name   (string)  → Nombre del objeto en Characters/<Name>/VFX/
+--   VFX_Limb   (string)  → Parte del cuerpo donde se posiciona el VFX (default: "RightHand")
+--   VFX_Limbs  (tabla)   → Para combos: {"RightHand", "LeftHand", "RightFoot"}
+--                           El índice se toma del comboIndex (hit 1 = [1], hit 2 = [2], etc.)
+--                           Si VFX_Limbs existe, tiene prioridad sobre VFX_Limb.
+--
+-- VALORES VÁLIDOS PARA VFX_Limb / VFX_Limbs:
+--   "RightHand"  → Mano/brazo derecho
+--   "LeftHand"   → Mano/brazo izquierdo
+--   "RightFoot"  → Pie/pierna derecha
+--   "LeftFoot"   → Pie/pierna izquierda
+--   "Head"       → Cabeza
+--   "Torso"      → Torso/pecho
+--   "Root"       → HumanoidRootPart (centro del personaje)
+--
+-- EJEMPLO COMBO (Punch que alterna puños y termina en patada):
+--   Attacks.Punch = {
+--     VFX_Name  = "FirePunch",
+--     VFX_Limbs = { "RightHand", "LeftHand", "RightFoot" },
+--     ...
+--   }
+--   → Punch1 usa RightHand, Punch2 usa LeftHand, Punch3 usa RightFoot
+--
+-- ESTRUCTURA DE CARPETAS:
+--   Characters/
+--     Ken/
+--       Ken.luau
+--       Animations/
+--       VFX/
+--         FirePunch
+--     Ryu/
+--       Ryu.luau
+--       VFX/
+--         ...
 -- =============================================
 
--- Registro interno de VFX por nombre
-local SwingVFXRegistry = {}
+local CharactersFolder = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Characters")
 
--- Registra un VFX personalizado por nombre.
--- name: string identificador único (el que usarás en VFX_Name del ataque)
--- handler: función(character, attackData) que crea el efecto visual
-function VFXService.RegisterSwingVFX(name, handler)
-	if type(name) ~= "string" or type(handler) ~= "function" then
-		warn("❌ RegisterSwingVFX: name must be string, handler must be function")
-		return
+-- Cache para no buscar la carpeta VFX repetidamente
+local vfxFolderCache = {}
+
+-- Busca la carpeta VFX del personaje dado
+local function getVFXFolder(characterName)
+	if vfxFolderCache[characterName] ~= nil then
+		return vfxFolderCache[characterName]
 	end
-	SwingVFXRegistry[name] = handler
+
+	local charFolder = CharactersFolder:FindFirstChild(characterName)
+	if charFolder then
+		local vfxFolder = charFolder:FindFirstChild("VFX")
+		vfxFolderCache[characterName] = vfxFolder or false
+		return vfxFolder
+	end
+
+	vfxFolderCache[characterName] = false
+	return nil
 end
 
--- Reproduce el VFX de swing registrado bajo el nombre dado.
--- Se llama desde CombatController al INICIAR el ataque (no depende de hit).
--- vfxName: string (el VFX_Name del ataque)
--- character: Model del atacante
--- attackData: tabla del ataque completo
-function VFXService.PlaySwingVFX(vfxName, character, attackData)
-	if not vfxName or not character then
-		return
-	end
-
-	local handler = SwingVFXRegistry[vfxName]
-	if handler then
-		task.spawn(handler, character, attackData)
-	else
-		warn("⚠️ SwingVFX not found:", vfxName, "- Registra con VFXService.RegisterSwingVFX()")
-	end
-end
-
 -- =============================================
--- BUILT-IN SWING VFX: FirePunch
--- Puño de fuego que envuelve la mano del personaje durante el ataque.
--- El efecto se adhiere a la mano derecha y dura startup + active frames.
+-- LIMB FINDER: busca la parte del cuerpo correcta en el personaje
+-- Soporta R6, R15 y rigs custom.
+-- limbName: string (uno de los valores válidos listados arriba)
 -- =============================================
 
-local FIRE_PUNCH_COLOR = Color3.fromRGB(255, 100, 0)
-local FIRE_PUNCH_CORE_COLOR = Color3.fromRGB(255, 220, 60)
-local FIRE_PUNCH_GLOW_SIZE = 1.2
-local FIRE_PUNCH_FLAME_COUNT = 6
-local FIRE_PUNCH_ORBIT_SPEED = 12
+-- Mapeo de nombre lógico → nombres de parte en R15 y R6
+local LIMB_MAP = {
+	RightHand = { "RightHand", "Right Arm" },
+	LeftHand = { "LeftHand", "Left Arm" },
+	RightFoot = { "RightFoot", "Right Leg" },
+	LeftFoot = { "LeftFoot", "Left Leg" },
+	Head = { "Head" },
+	Torso = { "UpperTorso", "Torso" },
+	Root = { "HumanoidRootPart" },
+}
 
--- Encuentra la mano derecha del personaje (R15 o R6)
-local function findRightHand(character)
-	-- R15
-	local hand = character:FindFirstChild("RightHand")
-	if hand then
-		return hand
+-- Espejo de extremidades cuando el personaje mira a la izquierda (animación invertida)
+local MIRROR_MAP = {
+	RightHand = "LeftHand",
+	LeftHand = "RightHand",
+	RightFoot = "LeftFoot",
+	LeftFoot = "RightFoot",
+}
+
+local function findLimb(character, limbName)
+	if not limbName then
+		limbName = "RightHand"
 	end
-	-- R6
-	local arm = character:FindFirstChild("Right Arm")
-	if arm then
-		return arm
-	end
-	-- Fallback: cualquier parte con "right" y "hand/arm"
-	for _, part in pairs(character:GetDescendants()) do
-		if part:IsA("BasePart") then
-			local lowerName = string.lower(part.Name)
-			if
-				string.find(lowerName, "right") and (string.find(lowerName, "hand") or string.find(lowerName, "arm"))
-			then
+
+	local candidates = LIMB_MAP[limbName]
+	if candidates then
+		for _, name in ipairs(candidates) do
+			local part = character:FindFirstChild(name)
+			if part and part:IsA("BasePart") then
 				return part
 			end
 		end
 	end
-	return nil
+
+	-- Fallback: buscar por nombre parcial en descendientes
+	local lower = string.lower(limbName)
+	for _, part in pairs(character:GetDescendants()) do
+		if part:IsA("BasePart") and string.find(string.lower(part.Name), lower) then
+			return part
+		end
+	end
+
+	-- Fallback final: HumanoidRootPart
+	return character:FindFirstChild("HumanoidRootPart")
 end
 
-VFXService.RegisterSwingVFX("FirePunch", function(character, attackData)
-	local hand = findRightHand(character)
-	if not hand then
+-- Prepara todas las partes de un VFX clonado: las hace no-colisionables y no-físicas
+local function prepareVFXInstance(instance)
+	if instance:IsA("BasePart") then
+		instance.Anchored = true
+		instance.CanCollide = false
+		instance.CanTouch = false
+		instance.CanQuery = false
+		instance.CastShadow = false
+	end
+	for _, child in pairs(instance:GetDescendants()) do
+		if child:IsA("BasePart") then
+			child.Anchored = true
+			child.CanCollide = false
+			child.CanTouch = false
+			child.CanQuery = false
+			child.CastShadow = false
+		end
+	end
+end
+
+-- Reproduce el VFX de swing desde la carpeta VFX del personaje.
+-- Se llama desde CombatController al INICIAR el ataque (no depende de hit).
+-- vfxName:         string → nombre del efecto en Characters/<name>/VFX/
+-- characterName:   string → nombre del personaje (ej: "Ken")
+-- character:       Model  → modelo del atacante
+-- attackData:      tabla  → datos del ataque (para duración)
+-- comboIndex:      number → índice del combo actual (1, 2, 3...) para elegir limb de VFX_Limbs
+-- facingDirection: string → "R" o "L", dirección a la que mira el personaje
+function VFXService.PlaySwingVFX(vfxName, characterName, character, attackData, comboIndex, facingDirection)
+	if not vfxName or not characterName or not character then
 		return
 	end
 
+	local vfxFolder = getVFXFolder(characterName)
+	if not vfxFolder then
+		warn(
+			"⚠️ VFX folder not found for character:",
+			characterName,
+			"— Crea Characters/" .. characterName .. "/VFX/ y coloca tus efectos ahí"
+		)
+		return
+	end
+
+	local vfxTemplate = vfxFolder:FindFirstChild(vfxName)
+	if not vfxTemplate then
+		warn("⚠️ VFX '" .. vfxName .. "' not found in Characters/" .. characterName .. "/VFX/")
+		return
+	end
+
+	-- Determinar qué extremidad usar:
+	-- 1. Si hay VFX_Limbs (tabla) y comboIndex, usar el índice
+	-- 2. Si hay VFX_Limb (string), usarlo directamente
+	-- 3. Default: "RightHand"
+	local limbName = "RightHand"
+	if attackData.VFX_Limbs and comboIndex then
+		-- Ciclar si el comboIndex excede la tabla
+		local idx = ((comboIndex - 1) % #attackData.VFX_Limbs) + 1
+		limbName = attackData.VFX_Limbs[idx]
+	elseif attackData.VFX_Limb then
+		limbName = attackData.VFX_Limb
+	end
+
+	-- Espejear extremidad si el personaje mira a la izquierda
+	if facingDirection == "L" and MIRROR_MAP[limbName] then
+		limbName = MIRROR_MAP[limbName]
+	end
+
+	local limb = findLimb(character, limbName)
+	if not limb then
+		warn("⚠️ PlaySwingVFX: Limb not found:", limbName)
+		return
+	end
+
+	-- Calcular duración del efecto
 	local duration = (attackData.Startup or 0) + (attackData.Active or 0)
 	if duration <= 0 then
 		duration = 0.4
 	end
 
-	local elapsed = 0
-	local parts = {}
+	-- Clonar el VFX y prepararlo
+	local vfxClone = vfxTemplate:Clone()
+	vfxClone.Name = "SwingVFX_" .. vfxName
+	prepareVFXInstance(vfxClone)
+	vfxClone.Parent = workspace
 
-	-- Glow central adherido a la mano
-	local glow = Instance.new("Part")
-	glow.Size = Vector3.new(FIRE_PUNCH_GLOW_SIZE, FIRE_PUNCH_GLOW_SIZE, FIRE_PUNCH_GLOW_SIZE)
-	glow.CFrame = hand.CFrame
-	glow.Anchored = true
-	glow.CanCollide = false
-	glow.CanTouch = false
-	glow.CanQuery = false
-	glow.CastShadow = false
-	glow.Material = Enum.Material.Neon
-	glow.Color = FIRE_PUNCH_CORE_COLOR
-	glow.Transparency = 0.3
-	glow.Shape = Enum.PartType.Ball
-	glow.Name = "FirePunch_Glow"
-	glow.Parent = workspace
-	table.insert(parts, glow)
-
-	-- Llamitas orbitantes alrededor de la mano
-	local flames = {}
-	for i = 1, FIRE_PUNCH_FLAME_COUNT do
-		local flame = Instance.new("Part")
-		local fSize = 0.2 + math.random() * 0.25
-		flame.Size = Vector3.new(fSize, fSize, fSize)
-		flame.Anchored = true
-		flame.CanCollide = false
-		flame.CanTouch = false
-		flame.CanQuery = false
-		flame.CastShadow = false
-		flame.Material = Enum.Material.Neon
-		flame.Color = i % 2 == 0 and FIRE_PUNCH_COLOR or FIRE_PUNCH_CORE_COLOR
-		flame.Transparency = 0.15
-		flame.Shape = Enum.PartType.Ball
-		flame.Name = "FirePunch_Flame"
-		flame.Parent = workspace
-		table.insert(parts, flame)
-		table.insert(
-			flames,
-			{ part = flame, angle = (i / FIRE_PUNCH_FLAME_COUNT) * math.pi * 2, radius = 0.5 + math.random() * 0.3 }
-		)
+	-- Posición inicial
+	if vfxClone:IsA("Model") then
+		if vfxClone.PrimaryPart then
+			vfxClone:PivotTo(limb.CFrame)
+		end
+	elseif vfxClone:IsA("BasePart") then
+		vfxClone.CFrame = limb.CFrame
 	end
 
-	-- Loop de seguimiento: las llamas orbitan la mano durante el ataque
+	-- Activar ParticleEmitters si existen
+	local emitters = {}
+	for _, desc in pairs(vfxClone:GetDescendants()) do
+		if desc:IsA("ParticleEmitter") then
+			desc.Enabled = true
+			table.insert(emitters, desc)
+		end
+	end
+
+	-- Loop: seguir la extremidad durante toda la duración del ataque
+	local elapsed = 0
 	local connection
 	connection = RunService.RenderStepped:Connect(function(dt)
 		elapsed += dt
 
-		if elapsed >= duration or not hand or not hand.Parent then
+		if elapsed >= duration or not limb or not limb.Parent then
 			connection:Disconnect()
-			-- Fade out
-			for _, p in ipairs(parts) do
-				if p and p.Parent then
-					local fadeInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-					TweenService:Create(p, fadeInfo, { Transparency = 1, Size = Vector3.new(0.05, 0.05, 0.05) }):Play()
+
+			-- Desactivar emitters
+			for _, emitter in ipairs(emitters) do
+				if emitter and emitter.Parent then
+					emitter.Enabled = false
 				end
 			end
-			task.delay(0.2, function()
-				for _, p in ipairs(parts) do
-					if p and p.Parent then
-						p:Destroy()
-					end
+
+			-- Fade out
+			local fadeInfoVFX = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			for _, desc in pairs(vfxClone:GetDescendants()) do
+				if desc:IsA("BasePart") then
+					TweenService:Create(desc, fadeInfoVFX, { Transparency = 1 }):Play()
+				end
+			end
+			if vfxClone:IsA("BasePart") then
+				TweenService:Create(vfxClone, fadeInfoVFX, { Transparency = 1 }):Play()
+			end
+
+			task.delay(0.3, function()
+				if vfxClone and vfxClone.Parent then
+					vfxClone:Destroy()
 				end
 			end)
 			return
 		end
 
-		-- Seguir la mano
-		local handPos = hand.Position
-		glow.CFrame = CFrame.new(handPos)
-
-		-- Pulsar tamaño del glow
-		local pulse = 1 + math.sin(elapsed * 20) * 0.15
-		glow.Size =
-			Vector3.new(FIRE_PUNCH_GLOW_SIZE * pulse, FIRE_PUNCH_GLOW_SIZE * pulse, FIRE_PUNCH_GLOW_SIZE * pulse)
-
-		-- Orbitar llamas
-		for _, f in ipairs(flames) do
-			f.angle += FIRE_PUNCH_ORBIT_SPEED * dt
-			local ox = math.cos(f.angle) * f.radius
-			local oy = math.sin(f.angle) * f.radius
-			f.part.CFrame = CFrame.new(handPos + Vector3.new(ox, oy, 0))
+		-- Seguir la extremidad
+		if vfxClone:IsA("Model") then
+			if vfxClone.PrimaryPart and vfxClone.PrimaryPart.Parent then
+				vfxClone:PivotTo(limb.CFrame)
+			end
+		elseif vfxClone:IsA("BasePart") and vfxClone.Parent then
+			vfxClone.CFrame = limb.CFrame
 		end
 	end)
-end)
+end
 
 return VFXService

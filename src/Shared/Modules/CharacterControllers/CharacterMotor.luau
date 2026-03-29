@@ -300,8 +300,35 @@ function CharacterMotor:UpdateAirState()
 	self.context.wasAirborne = self.context.isAirborne
 end
 
--- Gira el personaje hacia el oponente comparando posiciones X
+-- Gira el personaje según la dirección de movimiento.
+-- Si no se mueve, mantiene la última dirección.
 function CharacterMotor:UpdateFacing()
+	local moveDir = self.context.moveDirection or 0
+
+	-- Solo cambiar dirección si hay input de movimiento
+	if moveDir > 0.01 then
+		local newDirection = "R"
+		if newDirection ~= self.context.currentDirection then
+			self.context.currentDirection = newDirection
+			if not self.context.attackLocked and not self.context.isInHitstun then
+				self.animationController:RefreshLocomotionAnimation()
+			end
+		end
+	elseif moveDir < -0.01 then
+		local newDirection = "L"
+		if newDirection ~= self.context.currentDirection then
+			self.context.currentDirection = newDirection
+			if not self.context.attackLocked and not self.context.isInHitstun then
+				self.animationController:RefreshLocomotionAnimation()
+			end
+		end
+	end
+end
+
+-- DESACTIVADO: Auto-face al oponente (útil para modos 1v1 clásicos).
+-- Para reactivar, reemplazar UpdateFacing arriba por esta versión.
+--[[
+function CharacterMotor:UpdateFacingToOpponent()
 	if not self.context.opponentRoot or not self.context.opponentRoot.Parent then
 		return
 	end
@@ -315,11 +342,11 @@ function CharacterMotor:UpdateFacing()
 		self.context.currentDirection = newDirection
 
 		if not self.context.attackLocked and not self.context.isInHitstun then
-			--self:_updateBlockState()
 			self.animationController:RefreshLocomotionAnimation()
 		end
 	end
 end
+--]]
 
 -- Determina si una Part debe bloquear el movimiento (colisión)
 function CharacterMotor:IsBlockingPart(part)
@@ -342,14 +369,13 @@ function CharacterMotor:IsBlockingPart(part)
 		return false
 	end
 
-	-- Para el oponente: solo ignorar sus partes NO colisionables
-	-- Pero BLOQUEAR su HumanoidRootPart (para push collision)
+	-- Para el oponente: colisión desactivada (se puede atravesar)
+	-- Para reactivar, descomentar el bloque de abajo
 	if self.context.opponent and part:IsDescendantOf(self.context.opponent) then
-		-- El HumanoidRootPart del oponente actúa como "cuerpo sólido"
-		if part.Name == "HumanoidRootPart" then
-			return true
-		end
-		-- Ignorar otras partes del oponente (brazos, piernas, etc.)
+		-- DESACTIVADO: El HumanoidRootPart del oponente ya no bloquea
+		-- if part.Name == "HumanoidRootPart" then
+		-- 	return true
+		-- end
 		return false
 	end
 
@@ -467,8 +493,25 @@ function CharacterMotor:UpdatePushback()
 	end
 end
 
--- Escribe el CFrame final: currentX en X, physics Y, lockedZ, rotación hacia oponente
+-- Escribe el CFrame final: currentX en X, physics Y, lockedZ, rotación según currentDirection
 function CharacterMotor:ApplyPlaneLockAndRotation()
+	local root = self.context.root
+	local pos = root.Position
+
+	local finalX = self.context.currentX
+	local finalY = pos.Y
+	local finalZ = self.context.lockedZ
+
+	-- Rotación basada en la dirección de movimiento (currentDirection)
+	local angleY = self.context.currentDirection == "L" and math.rad(90) or math.rad(-90)
+
+	root.CFrame = CFrame.new(finalX, finalY, finalZ) * CFrame.Angles(0, angleY, 0)
+end
+
+-- DESACTIVADO: Versión que rota hacia el oponente (útil para modos 1v1 clásicos).
+-- Para reactivar, reemplazar ApplyPlaneLockAndRotation arriba por esta versión.
+--[[
+function CharacterMotor:ApplyPlaneLockAndRotationToOpponent()
 	local root = self.context.root
 	local pos = root.Position
 
@@ -486,6 +529,7 @@ function CharacterMotor:ApplyPlaneLockAndRotation()
 
 	root.CFrame = CFrame.new(finalX, finalY, finalZ) * CFrame.Angles(0, angleY, 0)
 end
+--]]
 
 -- Inicia empuje por golpe: velocity = direction * pushback * 0.12, decay = 12%
 function CharacterMotor:ApplyPushReaction(pushback, direction, duration)
