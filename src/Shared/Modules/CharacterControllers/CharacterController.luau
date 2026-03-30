@@ -8,6 +8,7 @@ local CharacterControllers = Modules:WaitForChild("CharacterControllers")
 local AnimationController = require(CharacterControllers:WaitForChild("AnimationController"))
 local CharacterMotor = require(CharacterControllers:WaitForChild("CharacterMotor"))
 local CombatController = require(CharacterControllers:WaitForChild("CombatController"))
+local VFXService = require(Combat:WaitForChild("VFXService"))
 local Characters = Modules:WaitForChild("Characters")
 local CharacterRegistry = require(Characters:WaitForChild("CharacterRegistry"))
 
@@ -15,6 +16,7 @@ local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local RemoteEvents = Remotes:WaitForChild("Events")
 local SetOpponentEvent = RemoteEvents:WaitForChild("SetOpponent")
 local ReplicateAnimationEvent = RemoteEvents:WaitForChild("ReplicateAnimation")
+local ReplicateVFXEvent = RemoteEvents:WaitForChild("ReplicateVFX")
 
 -- Orquestador principal: crea Motor, Combat, Animation y corre el loop RenderStepped
 local CharacterController = {}
@@ -63,6 +65,8 @@ function CharacterController.new(character, machine, characterName)
 
 	-- Aplicar stats del personaje
 	local walkSpeed = (charInfo and charInfo.WalkSpeed) or 16
+	local weight = (charInfo and charInfo.Weight) or 1.0
+	local gravityScale = (charInfo and charInfo.GravityScale) or 1.0
 
 	local context = {
 		character = character,
@@ -120,7 +124,12 @@ function CharacterController.new(character, machine, characterName)
 		hasAirAttacked = false,
 		isInAirHitstun = false,
 		juggleCount = 0,
-		maxJuggles = 3,
+		maxJuggles = 5,
+
+		-- Gravity/Weight system (Brawlhalla-style juggling)
+		weight = weight, -- Peso del personaje (menor = vuela más lejos)
+		gravityScale = gravityScale, -- Multiplicador de gravedad (mayor = cae más rápido)
+		juggleDecay = 0.15, -- Reducción de hitstun/launch por cada juggle (15% por hit)
 
 		-- Knockdown state
 		isKnockedDown = false,
@@ -242,6 +251,31 @@ function CharacterController.new(character, machine, characterName)
 		end
 
 		self.animationController:PlayOpponentAnimation(animationName)
+	end)
+
+	-- =============================================
+	-- ✨ RECIBIR VFX DE OTROS JUGADORES
+	-- =============================================
+	ReplicateVFXEvent.OnClientEvent:Connect(function(remoteCharacter, vfxType, vfxData)
+		if not remoteCharacter or not remoteCharacter.Parent then
+			return
+		end
+
+		if vfxType == "SwingVFX" then
+			VFXService.PlaySwingVFX(
+				vfxData.VFX_Name,
+				vfxData.CharacterName,
+				remoteCharacter,
+				vfxData,
+				vfxData.ComboIndex,
+				vfxData.FacingDirection
+			)
+		elseif vfxType == "HitEffect" then
+			VFXService.PlayHitEffect(vfxData.Position, vfxData.HitType, vfxData.Direction)
+			if vfxData.AttackVFX then
+				VFXService.PlayAttackVFX(vfxData.AttackVFX, remoteCharacter, vfxData.Position, vfxData.Direction)
+			end
+		end
 	end)
 
 	local initialOpponentRoot = findOpponent()

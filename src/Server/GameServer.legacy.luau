@@ -33,6 +33,11 @@ local ReplicateAnimationEvent = RemoteEvents:WaitForChild("ReplicateAnimation")
 -- Evento de sincronización de ataques
 local SyncAttackEvent = RemoteEvents:WaitForChild("SyncAttack")
 
+-- Evento de replicación de VFX
+local ReplicateVFXEvent = Instance.new("RemoteEvent")
+ReplicateVFXEvent.Name = "ReplicateVFX"
+ReplicateVFXEvent.Parent = RemoteEvents
+
 -- ============================================
 -- 🎯 MANEJAR REQUESTS DE GAME MODES
 -- ============================================
@@ -69,6 +74,19 @@ SyncAttackEvent.OnServerEvent:Connect(function(player, attackData)
 	if opponent then
 		-- Replicar ataque al oponente
 		SyncAttackEvent:FireClient(opponent, player.Character, attackData)
+	end
+end)
+
+-- ============================================
+-- ✨ REPLICAR VFX A OTROS JUGADORES
+-- ============================================
+
+ReplicateVFXEvent.OnServerEvent:Connect(function(player, vfxType, vfxData)
+	-- Broadcast VFX a todos los jugadores excepto el que lo envió
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= player then
+			ReplicateVFXEvent:FireClient(otherPlayer, player.Character, vfxType, vfxData)
+		end
 	end
 end)
 

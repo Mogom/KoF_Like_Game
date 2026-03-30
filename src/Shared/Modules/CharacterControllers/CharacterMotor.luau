@@ -47,7 +47,7 @@ function CharacterMotor.new(context, animationController)
 	self.context.hasAirAttacked = false
 	self.context.isInAirHitstun = false
 	self.context.juggleCount = 0
-	self.context.maxJuggles = 3
+	self.context.maxJuggles = self.context.maxJuggles or 5
 
 	-- =============================================
 	-- 💀 KNOCKDOWN STATE
@@ -605,7 +605,7 @@ function CharacterMotor:Update(dt)
 		or self.context.isInBlockstun
 
 	-- HITSTOP: Congelar todo
-	if HitstopService:IsInHitstop() then
+	if HitstopService:IsInHitstop(self.context.character) then
 		local velocity = root.AssemblyLinearVelocity
 		root.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
 		if isInHitReaction then

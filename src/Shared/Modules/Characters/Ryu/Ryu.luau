@@ -39,6 +39,8 @@ Ryu.Info = {
 	Description = "Peleador equilibrado con proyectil y antiáereo.",
 	Health = 100,
 	WalkSpeed = 16,
+	Weight = 1.0, -- Peso estándar
+	GravityScale = 1.0, -- Gravedad normal
 	Color = Color3.fromRGB(220, 220, 220), -- Color representativo (blanco)
 }
 

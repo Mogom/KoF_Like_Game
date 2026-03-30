@@ -358,11 +358,13 @@ function AnimationController:LoadOpponentAnimations(opponentCharacter, opponentC
 	self.opponentAnimations.CrouchPunch_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchPunch_R")
 		or self.opponentAnimations.Punch_R
 	self.opponentAnimations.CrouchPunch_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchPunch_L")
+		or self.opponentAnimations.CrouchPunch_R
 		or self.opponentAnimations.Punch_L
 
 	self.opponentAnimations.CrouchHeavy_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchHeavy_R")
 		or self.opponentAnimations.HeavyPunch_R
 	self.opponentAnimations.CrouchHeavy_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchHeavy_L")
+		or self.opponentAnimations.CrouchHeavy_R
 		or self.opponentAnimations.HeavyPunch_L
 
 	self.opponentAnimations.Dodge_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Dodge_R")

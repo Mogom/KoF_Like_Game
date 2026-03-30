@@ -10,6 +10,10 @@ local SoundManager = require(Combat:WaitForChild("SoundManager"))
 local HitstopService = require(Combat:WaitForChild("HitstopService"))
 local VFXService = require(Combat:WaitForChild("VFXService"))
 
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local RemoteEvents = Remotes:WaitForChild("Events")
+local ReplicateVFXEvent = RemoteEvents:WaitForChild("ReplicateVFX")
+
 -- Controlador de combate: ataques, hit reactions, hitstun, knockdown, predicción del oponente
 local CombatController = {}
 CombatController.__index = CombatController
@@ -254,7 +258,16 @@ function CombatController:ApplyBlockReaction(hitData)
 			table.insert(animsToFreeze, self.animationController.currentAnimation)
 		end
 
-		HitstopService:Apply(blockHitstopFrames, animsToFreeze, applyBlockPushback)
+		-- Congelar también al atacante (oponente) en la pantalla de la víctima
+		local opponentAnimsToFreeze = {}
+		if self.animationController.currentOpponentAnimation then
+			table.insert(opponentAnimsToFreeze, self.animationController.currentOpponentAnimation)
+		end
+		if self.context.opponent then
+			HitstopService:Apply(self.context.opponent, blockHitstopFrames, opponentAnimsToFreeze)
+		end
+
+		HitstopService:Apply(self.context.character, blockHitstopFrames, animsToFreeze, applyBlockPushback)
 	else
 		applyBlockPushback()
 	end
@@ -294,12 +307,30 @@ function CombatController:ApplyHitReaction(hitData)
 	local hitstopFrames = hitData.HitstopFrames or 0
 	local knockdown = hitData.Knockdown or false
 	local launchForce = hitData.LaunchForce or 0
+	local horizontalLaunch = hitData.HorizontalLaunch or 0
+
+	-- =============================================
+	-- JUGGLE DECAY: cada hit aéreo reduce la fuerza de lanzamiento y hitstun
+	-- Esto evita combos infinitos al estilo Brawlhalla
+	-- =============================================
+	local juggleCount = self.context.juggleCount or 0
+	local juggleDecay = self.context.juggleDecay or 0.15
+	local decayMultiplier = math.max(0.2, 1 - (juggleCount * juggleDecay))
+
+	-- WEIGHT SYSTEM: personajes ligeros vuelan más, pesados menos
+	local victimWeight = self.context.weight or 1.0
+	local weightMultiplier = 1 / math.max(0.3, victimWeight) -- Lighter = higher multiplier
 
 	-- Si estamos en el aire, usar animación de air hurt
 	if self.context.isAirborne then
 		hitAnimation = "AirHurt"
 		self.context.isInAirHitstun = true
-		self.context.juggleCount = (self.context.juggleCount or 0) + 1
+		self.context.juggleCount = juggleCount + 1
+
+		-- Aplicar decay a hitstun y launch para cada golpe aéreo sucesivo
+		hitstunDuration = hitstunDuration * decayMultiplier
+		launchForce = launchForce * decayMultiplier
+		horizontalLaunch = horizontalLaunch * decayMultiplier
 	end
 
 	-- Si tiene launch force, lanzar al aire
@@ -310,7 +341,32 @@ function CombatController:ApplyHitReaction(hitData)
 		self.context.juggleCount = 1
 
 		local root = self.context.root
-		root.AssemblyLinearVelocity = Vector3.new(0, launchForce, 0)
+		local scaledLaunch = launchForce * weightMultiplier
+
+		-- Horizontal launch: empuja en la dirección del atacante
+		local hLaunch = horizontalLaunch * weightMultiplier
+		local pushDir = 0
+		if hLaunch > 0 then
+			local attackerX = hitData.AttackerPositionX or 0
+			local victimX = self.context.currentX
+			pushDir = victimX >= attackerX and 1 or -1
+		end
+
+		root.AssemblyLinearVelocity = Vector3.new(pushDir * hLaunch, scaledLaunch, 0)
+	elseif self.context.isAirborne and launchForce > 0 then
+		-- Re-launch en el aire (juggle): aplicar fuerza vertical reducida + horizontal
+		local root = self.context.root
+		local scaledLaunch = launchForce * weightMultiplier * decayMultiplier
+
+		local hLaunch = horizontalLaunch * weightMultiplier * decayMultiplier
+		local pushDir = 0
+		if hLaunch > 0 then
+			local attackerX = hitData.AttackerPositionX or 0
+			local victimX = self.context.currentX
+			pushDir = victimX >= attackerX and 1 or -1
+		end
+
+		root.AssemblyLinearVelocity = Vector3.new(pushDir * hLaunch, scaledLaunch, 0)
 	end
 
 	self.context.machine:SetState("Hitstun")
@@ -325,7 +381,16 @@ function CombatController:ApplyHitReaction(hitData)
 			table.insert(animsToFreeze, self.animationController.currentAnimation)
 		end
 
-		HitstopService:Apply(hitstopFrames, animsToFreeze, function()
+		-- Congelar también al atacante (oponente) en la pantalla de la víctima
+		local opponentAnimsToFreeze = {}
+		if self.animationController.currentOpponentAnimation then
+			table.insert(opponentAnimsToFreeze, self.animationController.currentOpponentAnimation)
+		end
+		if self.context.opponent then
+			HitstopService:Apply(self.context.opponent, hitstopFrames, opponentAnimsToFreeze)
+		end
+
+		HitstopService:Apply(self.context.character, hitstopFrames, animsToFreeze, function()
 			self:_applyPostHitstopPushback(hitData, reactionId, hitstunDuration, knockdown)
 		end)
 	else
@@ -510,6 +575,18 @@ function CombatController:RegisterStates(machine)
 					comboIndex,
 					self.context.currentDirection
 				)
+
+				-- Replicar SwingVFX a otros jugadores
+				ReplicateVFXEvent:FireServer("SwingVFX", {
+					VFX_Name = attack.VFX_Name,
+					CharacterName = self.context.characterName,
+					VFX_Limb = attack.VFX_Limb,
+					VFX_Limbs = attack.VFX_Limbs,
+					Startup = attack.Startup,
+					Active = attack.Active,
+					ComboIndex = comboIndex,
+					FacingDirection = self.context.currentDirection,
+				})
 			end
 
 			-- =============================================
@@ -557,7 +634,7 @@ function CombatController:RegisterStates(machine)
 					end
 
 					-- Si estamos en hitstop, no avanzar
-					if HitstopService:IsInHitstop() then
+					if HitstopService:IsInHitstop(self.context.character) then
 						return
 					end
 
@@ -630,7 +707,7 @@ function CombatController:RegisterStates(machine)
 					end
 
 					-- No saltar durante hitstop
-					if HitstopService:IsInHitstop() then
+					if HitstopService:IsInHitstop(self.context.character) then
 						return
 					end
 
@@ -688,6 +765,14 @@ function CombatController:RegisterStates(machine)
 						if attack.AttackVFX then
 							VFXService.PlayAttackVFX(attack.AttackVFX, self.context.character, hitPosition, direction)
 						end
+
+						-- Replicar HitEffect a otros jugadores
+						ReplicateVFXEvent:FireServer("HitEffect", {
+							Position = hitPosition,
+							HitType = attack.HitType or "Light",
+							Direction = direction,
+							AttackVFX = attack.AttackVFX,
+						})
 					end
 
 					local connection
@@ -1148,19 +1233,22 @@ function CombatController:ApplyLocalHitPrediction(victimCharacter, attackData)
 	self.opponentIsInPredictedHitstun = true
 
 	if hitstopFrames > 0 then
-		local animsToFreeze = {}
-
+		-- Hitstop en el atacante (yo) y la víctima (oponente)
+		local attackerAnims = {}
 		if self.animationController.currentAnimation then
-			table.insert(animsToFreeze, self.animationController.currentAnimation)
+			table.insert(attackerAnims, self.animationController.currentAnimation)
 		end
-
+		local victimAnims = {}
 		if self.animationController.currentOpponentAnimation then
-			table.insert(animsToFreeze, self.animationController.currentOpponentAnimation)
+			table.insert(victimAnims, self.animationController.currentOpponentAnimation)
 		end
 
-		HitstopService:Apply(hitstopFrames, animsToFreeze, function()
+		HitstopService:Apply(self.context.character, hitstopFrames, attackerAnims, function()
 			self:_startOpponentPredictedPushback(pushback, hitstunDuration, predictionId, knockdown, opponentDir)
 		end)
+		if victimCharacter then
+			HitstopService:Apply(victimCharacter, hitstopFrames, victimAnims)
+		end
 	else
 		self:_startOpponentPredictedPushback(pushback, hitstunDuration, predictionId, knockdown, opponentDir)
 	end
@@ -1221,7 +1309,7 @@ end
 
 -- Mueve visualmente al oponente durante predicción: pushback + lock CFrame
 function CombatController:UpdateOpponentPrediction()
-	if HitstopService:IsInHitstop() then
+	if HitstopService:IsInHitstop(self.context.character) then
 		if self.opponentIsInPredictedHitstun and self.opponentCurrentX then
 			local opponentRoot = self.context.opponentRoot
 			if opponentRoot and opponentRoot.Parent then
@@ -1309,7 +1397,7 @@ end
 
 -- Update por frame: cuenta attackFrames, cancel window, predicción oponente
 function CombatController:Update(dt)
-	if HitstopService:IsInHitstop() then
+	if HitstopService:IsInHitstop(self.context.character) then
 		self:UpdateOpponentPrediction()
 		return
 	end

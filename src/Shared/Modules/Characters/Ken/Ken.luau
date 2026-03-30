@@ -46,6 +46,8 @@ Ken.Info = {
 	Description = "Rushdown agresivo, rápido y ofensivo.",
 	Health = 90,
 	WalkSpeed = 19,
+	Weight = 0.9, -- Ligero: vuela más lejos al ser lanzado, cae un poco más lento
+	GravityScale = 1.0, -- Gravedad normal
 	Color = Color3.fromRGB(200, 50, 50), -- Rojo
 }
 
@@ -69,9 +71,9 @@ Ken.Attacks.Punch = {
 	AttackHeight = "Mid",
 	Damage = 8,
 	HitstunDuration = 0.18,
-	Pushback = 15,
-	HitstopFrames = 35,
-	BlockPushback = 5,
+	Pushback = 5,
+	HitstopFrames = 5,
+	BlockPushback = 1,
 	BlockstunDuration = 0.12,
 	ChipDamage = 0,
 	GroundOnly = false,

@@ -41,7 +41,8 @@
 	    GroundOnly      = false,               -- Solo se puede usar en suelo
 	    AirOk           = false,               -- Se puede usar en el aire
 	    Knockdown       = false,               -- Tumba al oponente
-	    LaunchForce     = nil,                 -- Fuerza de lanzamiento (nil = no lanza)
+	    LaunchForce     = nil,                 -- Fuerza de lanzamiento vertical (nil = no lanza)
+	    HorizontalLaunch = nil,                -- Fuerza de lanzamiento horizontal (nil = solo vertical)
 	    IsSpecial       = false,               -- Es un movimiento especial
 	    -- Dash durante ataque (opcional):
 	    AttackDash      = false,               -- Activa desplazamiento

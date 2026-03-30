@@ -1,16 +1,16 @@
 --[[
 	HitstopService.lua
 	-------------------
-	Sistema de Hitstop (hitfreeze) para juegos de pelea.
+	Sistema de Hitstop (hitfreeze) per-character para juegos de pelea.
 	
-	Congela al atacante y a la víctima por X frames al momento del impacto.
-	Pausa animaciones, movimiento, pushback y timers.
+	Congela SOLO al atacante y a la víctima por X frames al momento del impacto.
+	Los demás personajes siguen moviéndose normalmente (compatible con 4v4).
 	
 	Uso:
-		HitstopService:Apply(hitstopFrames)
+		HitstopService:Apply(character, hitstopFrames, animsToFreeze, onComplete)
 	
 	Desde cualquier módulo se puede consultar:
-		HitstopService:IsInHitstop() → bool
+		HitstopService:IsInHitstop(character) → bool
 	
 	El motor, combat controller y dummy verifican esto para pausar su lógica.
 ]]
@@ -20,36 +20,35 @@ local RunService = game:GetService("RunService")
 local HitstopService = {}
 HitstopService.__index = HitstopService
 
--- Estado global del hitstop (uno por cliente)
-local isActive = false
-local remainingFrames = 0
-local frozenAnimations = {} -- {track, speed} para restaurar velocidad
-local onCompleteCallbacks = {}
+-- Tabla de hitstops activos por personaje: { [character] = { remainingFrames, frozenAnimations, onCompleteCallbacks } }
+local activeHitstops = {}
 
 --[[
-	Aplicar hitstop.
+	Aplicar hitstop a un personaje específico.
 	
+	@param character: Model del personaje a congelar
 	@param frames: número de frames de congelamiento (a 60fps, 6 frames = 100ms)
 	@param animationsToFreeze: tabla opcional de AnimationTracks a pausar
 	@param onComplete: callback opcional que se ejecuta al terminar el hitstop
 ]]
--- Aplica hitstop: congela animaciones por N frames, ejecuta callback al terminar
-function HitstopService:Apply(frames, animationsToFreeze, onComplete)
-	if not frames or frames <= 0 then
+function HitstopService:Apply(character, frames, animationsToFreeze, onComplete)
+	if not character or not frames or frames <= 0 then
 		return
 	end
 
-	-- Si ya estamos en hitstop, extender si el nuevo es mayor
-	if isActive then
-		if frames > remainingFrames then
-			remainingFrames = frames
+	local existing = activeHitstops[character]
+
+	if existing then
+		-- Si ya está en hitstop, extender si el nuevo es mayor
+		if frames > existing.remainingFrames then
+			existing.remainingFrames = frames
 		end
 
-		-- Agregar nuevas animaciones a congelar si las hay
+		-- Agregar nuevas animaciones a congelar
 		if animationsToFreeze then
 			for _, track in ipairs(animationsToFreeze) do
 				if track and track.IsPlaying then
-					table.insert(frozenAnimations, {
+					table.insert(existing.frozenAnimations, {
 						track = track,
 						originalSpeed = track.Speed,
 					})
@@ -59,22 +58,24 @@ function HitstopService:Apply(frames, animationsToFreeze, onComplete)
 		end
 
 		if onComplete then
-			table.insert(onCompleteCallbacks, onComplete)
+			table.insert(existing.onCompleteCallbacks, onComplete)
 		end
 
 		return
 	end
 
-	isActive = true
-	remainingFrames = frames
-	frozenAnimations = {}
-	onCompleteCallbacks = {}
+	-- Nuevo hitstop para este personaje
+	local hitstopData = {
+		remainingFrames = frames,
+		frozenAnimations = {},
+		onCompleteCallbacks = {},
+	}
 
 	-- Congelar animaciones proporcionadas
 	if animationsToFreeze then
 		for _, track in ipairs(animationsToFreeze) do
 			if track and track.IsPlaying then
-				table.insert(frozenAnimations, {
+				table.insert(hitstopData.frozenAnimations, {
 					track = track,
 					originalSpeed = track.Speed,
 				})
@@ -84,56 +85,63 @@ function HitstopService:Apply(frames, animationsToFreeze, onComplete)
 	end
 
 	if onComplete then
-		table.insert(onCompleteCallbacks, onComplete)
+		table.insert(hitstopData.onCompleteCallbacks, onComplete)
+	end
+
+	activeHitstops[character] = hitstopData
+end
+
+--[[
+	¿Este personaje está en hitstop ahora mismo?
+	Si no se pasa character, retorna true si CUALQUIER hitstop está activo (compat legacy).
+]]
+function HitstopService:IsInHitstop(character)
+	if character then
+		return activeHitstops[character] ~= nil
+	end
+	-- Legacy: retorna true si hay cualquier hitstop activo
+	return next(activeHitstops) ~= nil
+end
+
+--[[
+	Obtener frames restantes para un personaje (útil para debug)
+]]
+function HitstopService:GetRemainingFrames(character)
+	if character and activeHitstops[character] then
+		return activeHitstops[character].remainingFrames
+	end
+	return 0
+end
+
+--[[
+	Forzar fin del hitstop para un personaje específico
+]]
+function HitstopService:ForceEnd(character)
+	if character and activeHitstops[character] then
+		self:_finishCharacter(character)
 	end
 end
 
 --[[
-	¿Estamos en hitstop ahora mismo?
+	Terminar hitstop de un personaje: restaurar animaciones y ejecutar callbacks
 ]]
--- Retorna true si hay un hitstop activo
-function HitstopService:IsInHitstop()
-	return isActive
-end
-
---[[
-	Obtener frames restantes (útil para debug)
-]]
-function HitstopService:GetRemainingFrames()
-	return remainingFrames
-end
-
---[[
-	Forzar fin del hitstop (para casos especiales)
-]]
-function HitstopService:ForceEnd()
-	if not isActive then
+function HitstopService:_finishCharacter(character)
+	local data = activeHitstops[character]
+	if not data then
 		return
 	end
 
-	self:_finish()
-end
-
---[[
-	Terminar hitstop: restaurar animaciones y ejecutar callbacks
-]]
-function HitstopService:_finish()
-	isActive = false
-	remainingFrames = 0
+	activeHitstops[character] = nil
 
 	-- Restaurar velocidad de animaciones congeladas
-	for _, data in ipairs(frozenAnimations) do
-		if data.track and data.track.IsPlaying then
-			data.track:AdjustSpeed(data.originalSpeed)
+	for _, animData in ipairs(data.frozenAnimations) do
+		if animData.track and animData.track.IsPlaying then
+			animData.track:AdjustSpeed(animData.originalSpeed)
 		end
 	end
-	frozenAnimations = {}
 
 	-- Ejecutar callbacks de completado
-	local callbacks = onCompleteCallbacks
-	onCompleteCallbacks = {}
-
-	for _, cb in ipairs(callbacks) do
+	for _, cb in ipairs(data.onCompleteCallbacks) do
 		local ok, err = pcall(cb)
 		if not ok then
 			warn("⚠️ HitstopService onComplete error:", err)
@@ -142,19 +150,15 @@ function HitstopService:_finish()
 end
 
 -- ============================================
--- LOOP: Decrementar frames cada RenderStepped
+-- LOOP: Decrementar frames cada RenderStepped per-character
 -- ============================================
--- Usamos RenderStepped para que sea frame-perfect
--- (independiente de dt, como en fighters reales)
 RunService.RenderStepped:Connect(function()
-	if not isActive then
-		return
-	end
+	for character, data in pairs(activeHitstops) do
+		data.remainingFrames = data.remainingFrames - 1
 
-	remainingFrames = remainingFrames - 1
-
-	if remainingFrames <= 0 then
-		HitstopService:_finish()
+		if data.remainingFrames <= 0 then
+			HitstopService:_finishCharacter(character)
+		end
 	end
 end)
 

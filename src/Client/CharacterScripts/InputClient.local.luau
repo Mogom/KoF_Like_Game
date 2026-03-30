@@ -36,10 +36,10 @@ if enemy then
 	end
 end
 
--- KeyMap: mantiene tus comandos
+-- KeyMap: teclas mapeadas a acciones ABSOLUTAS (Left/Right) o acciones directas
 local KeyMap = {
-	[Enum.KeyCode.A] = "Back",
-	[Enum.KeyCode.D] = "Forward",
+	[Enum.KeyCode.A] = "Left",
+	[Enum.KeyCode.D] = "Right",
 	[Enum.KeyCode.S] = "Down",
 	[Enum.KeyCode.W] = "Up",
 	[Enum.KeyCode.Space] = "Up",
@@ -54,14 +54,26 @@ local KeyMap = {
 	[Enum.KeyCode.ButtonA] = "Up", -- Gamepad A
 	[Enum.KeyCode.DPadDown] = "Down", -- Gamepad Stick Down
 	[Enum.KeyCode.DPadUp] = "Up", -- Gamepad Stick Up
-	[Enum.KeyCode.DPadRight] = "Forward", -- Gamepad Stick Right
-	[Enum.KeyCode.DPadLeft] = "Back", -- Gamepad Stick Left
+	[Enum.KeyCode.DPadRight] = "Right", -- Gamepad Stick Right
+	[Enum.KeyCode.DPadLeft] = "Left", -- Gamepad Stick Left
 }
+
+-- Convierte input absoluto (Left/Right) a relativo (Forward/Back) según currentDirection
+-- Esto permite que los comandos especiales (QCF, etc.) funcionen mirando a ambos lados
+local function toRelativeDirection(absoluteDir)
+	local facing = controller.context and controller.context.currentDirection or "R"
+	if absoluteDir == "Right" then
+		return facing == "R" and "Forward" or "Back"
+	elseif absoluteDir == "Left" then
+		return facing == "L" and "Forward" or "Back"
+	end
+	return absoluteDir
+end
 
 -- Estado por tecla (evita flicker cuando cambias rápido)
 local KeyState = {
-	Back = false,
-	Forward = false,
+	Left = false,
+	Right = false,
 	Down = false,
 }
 
@@ -71,9 +83,9 @@ local function resolveMovementFromKeyState()
 		return
 	end
 
-	if KeyState.Forward and not KeyState.Back then
+	if KeyState.Right and not KeyState.Left then
 		controller:SetMoveDirection(1)
-	elseif KeyState.Back and not KeyState.Forward then
+	elseif KeyState.Left and not KeyState.Right then
 		controller:SetMoveDirection(-1)
 	else
 		controller:SetMoveDirection(0)
@@ -93,17 +105,22 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 
 	-- guardamos en buffer (para comandos/combos)
-	buffer:AddInput(command)
+	-- Left/Right se convierten a Forward/Back relativo al facing del personaje
+	local bufferInput = command
+	if command == "Left" or command == "Right" then
+		bufferInput = toRelativeDirection(command)
+	end
+	buffer:AddInput(bufferInput)
 
 	-- movimiento/crouch/jump/ataque
-	if command == "Back" then
-		KeyState.Back = true
+	if command == "Left" then
+		KeyState.Left = true
 		resolveMovementFromKeyState()
 		return
 	end
 
-	if command == "Forward" then
-		KeyState.Forward = true
+	if command == "Right" then
+		KeyState.Right = true
 		resolveMovementFromKeyState()
 		return
 	end
@@ -150,14 +167,14 @@ UserInputService.InputEnded:Connect(function(input)
 		return
 	end
 
-	if command == "Back" then
-		KeyState.Back = false
+	if command == "Left" then
+		KeyState.Left = false
 		resolveMovementFromKeyState()
 		return
 	end
 
-	if command == "Forward" then
-		KeyState.Forward = false
+	if command == "Right" then
+		KeyState.Right = false
 		resolveMovementFromKeyState()
 		return
 	end

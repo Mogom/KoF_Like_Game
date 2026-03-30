@@ -8,6 +8,10 @@ local Combat = Modules:WaitForChild("Combat")
 local DamageService = require(Combat:WaitForChild("DamageService"))
 local VFXService = require(Combat:WaitForChild("VFXService"))
 
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local RemoteEvents = Remotes:WaitForChild("Events")
+local ReplicateVFXEvent = RemoteEvents:WaitForChild("ReplicateVFX")
+
 -- Sistema de proyectiles: crea una Part que vuela y daña al primer enemigo que toca
 local ProjectileService = {}
 
@@ -87,6 +91,13 @@ function ProjectileService.Spawn(root, attackData, dir)
 						-- VFX en el punto de impacto
 						local rawDir = Vector3.new(dir, 0, 0)
 						VFXService.PlayHitEffect(proj.Position, attackData.HitType or "Special", rawDir)
+
+						-- Replicar HitEffect a otros jugadores
+						ReplicateVFXEvent:FireServer("HitEffect", {
+							Position = proj.Position,
+							HitType = attackData.HitType or "Special",
+							Direction = rawDir,
+						})
 
 						-- Aplicar daño vía servidor
 						DamageService.ApplyHit(character, victimChar, attackData)

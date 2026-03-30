@@ -1,11 +1,38 @@
 -- Server: Inicializa training dummies con hurtbox y atributos
 local Players = game:GetService("Players")
+local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Combat = Modules:WaitForChild("Combat")
 
 local Hurtbox = require(Combat:WaitForChild("Hurtbox"))
+
+-- =============================================
+-- 🛡️ COLLISION GROUP (mismo que HurtboxServer)
+-- =============================================
+local CHARACTER_GROUP = "Characters"
+
+-- Registrar solo si no existe (HurtboxServer puede cargar primero)
+pcall(function()
+	PhysicsService:RegisterCollisionGroup(CHARACTER_GROUP)
+end)
+pcall(function()
+	PhysicsService:CollisionGroupSetCollidable(CHARACTER_GROUP, CHARACTER_GROUP, false)
+end)
+
+local function setCharacterCollisionGroup(character)
+	for _, part in ipairs(character:GetDescendants()) do
+		if part:IsA("BasePart") then
+			part.CollisionGroup = CHARACTER_GROUP
+		end
+	end
+	character.DescendantAdded:Connect(function(part)
+		if part:IsA("BasePart") then
+			part.CollisionGroup = CHARACTER_GROUP
+		end
+	end)
+end
 
 -- Da network ownership del dummy root al jugador para que la posición
 -- se sincronice correctamente con el servidor (evita hit rejection por distancia).
@@ -35,6 +62,7 @@ local function setupDummy(dummy)
 	dummy:SetAttribute("HitCounter", dummy:GetAttribute("HitCounter") or 0)
 
 	Hurtbox.new(dummy)
+	setCharacterCollisionGroup(dummy)
 	print("🤖 Server dummy hurtbox created for", dummy.Name)
 
 	-- Asignar ownership al primer jugador disponible

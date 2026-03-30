@@ -295,7 +295,7 @@ function DummyController:_startFacingLoop()
 		-- =============================================
 		-- 🧊 HITSTOP: Congelar movimiento del dummy
 		-- =============================================
-		if HitstopService:IsInHitstop() then
+		if HitstopService:IsInHitstop(self.character) then
 			-- Solo mantener posición, no aplicar pushback
 			local myPos = self.root.Position
 			local playerPos = playerRoot.Position
@@ -358,7 +358,7 @@ function DummyController:OnHit(hitData)
 			table.insert(animsToFreeze, self.currentAnimation)
 		end
 
-		HitstopService:Apply(hitstopFrames, animsToFreeze, function()
+		HitstopService:Apply(self.character, hitstopFrames, animsToFreeze, function()
 			-- Después del hitstop: aplicar pushback
 			self:_applyPushbackAfterHitstop(hitData, reactionId, pushback, hitstunDuration)
 		end)
