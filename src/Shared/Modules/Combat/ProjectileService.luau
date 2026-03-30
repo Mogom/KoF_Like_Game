@@ -16,7 +16,7 @@ local ReplicateVFXEvent = RemoteEvents:WaitForChild("ReplicateVFX")
 local ProjectileService = {}
 
 -- Spawn: lanza un proyectil desde root en la dirección indicada (dir = 1 derecha, -1 izquierda)
-function ProjectileService.Spawn(root, attackData, dir)
+function ProjectileService.Spawn(root, attackData, dir, characterName)
 	if not root or not root.Parent then
 		return
 	end
@@ -90,13 +90,22 @@ function ProjectileService.Spawn(root, attackData, dir)
 
 						-- VFX en el punto de impacto
 						local rawDir = Vector3.new(dir, 0, 0)
-						VFXService.PlayHitEffect(proj.Position, attackData.HitType or "Special", rawDir)
+						if attackData.VFX and attackData.VFX.OnHit and characterName then
+							VFXService.PlayAtPosition(
+								characterName,
+								attackData.Id,
+								attackData.VFX.OnHit,
+								proj.Position,
+								0.5
+							)
+						end
 
 						-- Replicar HitEffect a otros jugadores
 						ReplicateVFXEvent:FireServer("HitEffect", {
+							CharacterName = characterName,
+							AttackId = attackData.Id,
+							VFX_OnHit = attackData.VFX and attackData.VFX.OnHit,
 							Position = proj.Position,
-							HitType = attackData.HitType or "Special",
-							Direction = rawDir,
 						})
 
 						-- Aplicar daño vía servidor

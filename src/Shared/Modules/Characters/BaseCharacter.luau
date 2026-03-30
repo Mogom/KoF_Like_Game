@@ -55,12 +55,10 @@
 	    JumpFrameStart  = 1,
 	    -- Cancel window (opcional):
 	    CancelWindow    = nil,                 -- { Start = N, End = N } o nil
-	    -- VFX de swing (opcional, se reproduce al INICIAR el ataque, NO requiere conectar):
-	    VFX_Name        = nil,                 -- Nombre del objeto dentro de Characters/<Name>/VFX/
+	    -- VFX pre-construido (opcional, modelos en Characters/<Name>/VFX/<AttackId>/):
+	    VFX             = nil,                 -- { Startup, Active, OnHit, ActiveTrail }
 	    VFX_Limb        = "RightHand",         -- Parte del cuerpo: RightHand/LeftHand/RightFoot/LeftFoot/Head/Torso/Root
 	    VFX_Limbs       = nil,                 -- Para combos: {"RightHand","LeftHand","RightFoot"} (por índice de combo)
-	    -- VFX de impacto (opcional, se reproduce SOLO al conectar):
-	    AttackVFX       = nil,                 -- { Type = "FireHand", Color, CoreColor, Size, ... }
 	    -- Hitbox:
 	    Hitbox = {
 	      Size   = Vector3.new(4, 5, 4),

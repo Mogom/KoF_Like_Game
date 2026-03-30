@@ -560,31 +560,87 @@ function CombatController:RegisterStates(machine)
 				SoundManager.PlaySound(attack.SoundEffect, self.context.root.Position, attack.SoundVolume or 0.5)
 			end
 
-			-- VFX de swing: se reproduce al INICIAR el ataque, no necesita conectar golpe
-			if attack.VFX_Name and self.context.characterName then
+			-- VFX: se reproduce al INICIAR el ataque (Startup y ActiveTrail)
+			if attack.VFX and self.context.characterName then
 				-- comboIndex: para combos con VFX_Limbs, indica qué extremidad usar
 				local comboIndex = self.context.punchComboCount or 1
 				if comboIndex < 1 then
 					comboIndex = 1
 				end
-				VFXService.PlaySwingVFX(
-					attack.VFX_Name,
-					self.context.characterName,
-					self.context.character,
-					attack,
-					comboIndex,
-					self.context.currentDirection
-				)
 
-				-- Replicar SwingVFX a otros jugadores
+				-- Resolver limbName
+				local limbName = "RightHand"
+				if attack.VFX_Limbs and comboIndex then
+					local idx = ((comboIndex - 1) % #attack.VFX_Limbs) + 1
+					limbName = attack.VFX_Limbs[idx]
+				elseif attack.VFX_Limb then
+					limbName = attack.VFX_Limb
+				end
+
+				-- Startup VFX: sigue la extremidad durante Startup + Active
+				if attack.VFX.Startup then
+					local vfxDuration = (attack.Startup or 0) + (attack.Active or 0)
+					VFXService.Play(
+						self.context.characterName,
+						attack.Id,
+						attack.VFX.Startup,
+						self.context.character,
+						limbName,
+						self.context.currentDirection,
+						vfxDuration
+					)
+				end
+
+				-- Active VFX: sigue la extremidad durante los Active frames (sin importar si conecta)
+				if attack.VFX.Active then
+					local activeCharName = self.context.characterName
+					local activeAttackId = attack.Id
+					local activeVfxName = attack.VFX.Active
+					local activeCharacter = self.context.character
+					local activeLimb = limbName
+					local activeDir = self.context.currentDirection
+					local activeDuration = attack.Active or 0.2
+					task.delay(attack.Startup or 0, function()
+						VFXService.Play(
+							activeCharName,
+							activeAttackId,
+							activeVfxName,
+							activeCharacter,
+							activeLimb,
+							activeDir,
+							activeDuration
+						)
+					end)
+				end
+
+				-- ActiveTrail: se activa durante los Active frames
+				if attack.VFX.ActiveTrail then
+					VFXService.EnableTrail(
+						self.context.characterName,
+						attack.Id,
+						self.context.character,
+						limbName,
+						self.context.currentDirection,
+						true
+					)
+					local trailCharName = self.context.characterName
+					local trailAttackId = attack.Id
+					local trailCharacter = self.context.character
+					local trailLimb = limbName
+					local trailDir = self.context.currentDirection
+					task.delay((attack.Startup or 0) + (attack.Active or 0), function()
+						VFXService.EnableTrail(trailCharName, trailAttackId, trailCharacter, trailLimb, trailDir, false)
+					end)
+				end
+
+				-- Replicar a otros jugadores
 				ReplicateVFXEvent:FireServer("SwingVFX", {
-					VFX_Name = attack.VFX_Name,
 					CharacterName = self.context.characterName,
-					VFX_Limb = attack.VFX_Limb,
-					VFX_Limbs = attack.VFX_Limbs,
+					AttackId = attack.Id,
+					VFX = attack.VFX,
+					VFX_Limb = limbName,
 					Startup = attack.Startup,
 					Active = attack.Active,
-					ComboIndex = comboIndex,
 					FacingDirection = self.context.currentDirection,
 				})
 			end
@@ -747,7 +803,7 @@ function CombatController:RegisterStates(machine)
 					if self.context.machine:GetState() ~= "Attack" then
 						return
 					end
-					ProjectileService.Spawn(self.context.root, attack, dir)
+					ProjectileService.Spawn(self.context.root, attack, dir, self.context.characterName)
 				end)
 			else
 				task.delay(attack.Startup, function()
@@ -758,20 +814,24 @@ function CombatController:RegisterStates(machine)
 					local hitbox = Hitbox.new(self.context.root, attack.Hitbox)
 					hitbox.attackData = attack
 
-					-- Efecto visual al conectar el golpe
+					-- Efecto visual al conectar el golpe (OnHit VFX)
 					hitbox.onHit = function(hitPosition, direction, _victimCharacter)
-						VFXService.PlayHitEffect(hitPosition, attack.HitType or "Light", direction)
-						-- VFX personalizado del ataque (e.g. FireHand)
-						if attack.AttackVFX then
-							VFXService.PlayAttackVFX(attack.AttackVFX, self.context.character, hitPosition, direction)
+						if attack.VFX and attack.VFX.OnHit and self.context.characterName then
+							VFXService.PlayAtPosition(
+								self.context.characterName,
+								attack.Id,
+								attack.VFX.OnHit,
+								hitPosition,
+								0.5
+							)
 						end
 
 						-- Replicar HitEffect a otros jugadores
 						ReplicateVFXEvent:FireServer("HitEffect", {
+							CharacterName = self.context.characterName,
+							AttackId = attack.Id,
+							VFX_OnHit = attack.VFX and attack.VFX.OnHit,
 							Position = hitPosition,
-							HitType = attack.HitType or "Light",
-							Direction = direction,
-							AttackVFX = attack.AttackVFX,
 						})
 					end
 

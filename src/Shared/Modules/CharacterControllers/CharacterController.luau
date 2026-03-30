@@ -262,18 +262,67 @@ function CharacterController.new(character, machine, characterName)
 		end
 
 		if vfxType == "SwingVFX" then
-			VFXService.PlaySwingVFX(
-				vfxData.VFX_Name,
-				vfxData.CharacterName,
-				remoteCharacter,
-				vfxData,
-				vfxData.ComboIndex,
-				vfxData.FacingDirection
-			)
+			local vfx = vfxData.VFX
+			local limbName = vfxData.VFX_Limb or "RightHand"
+			local duration = (vfxData.Startup or 0) + (vfxData.Active or 0)
+
+			if vfx and vfx.Startup then
+				VFXService.Play(
+					vfxData.CharacterName,
+					vfxData.AttackId,
+					vfx.Startup,
+					remoteCharacter,
+					limbName,
+					vfxData.FacingDirection,
+					duration
+				)
+			end
+
+			if vfx and vfx.Active then
+				local activeCharName = vfxData.CharacterName
+				local activeAttackId = vfxData.AttackId
+				local activeVfxName = vfx.Active
+				local activeLimb = limbName
+				local activeFacingDir = vfxData.FacingDirection
+				local activeDuration = vfxData.Active or 0.2
+				task.delay(vfxData.Startup or 0, function()
+					VFXService.Play(
+						activeCharName,
+						activeAttackId,
+						activeVfxName,
+						remoteCharacter,
+						activeLimb,
+						activeFacingDir,
+						activeDuration
+					)
+				end)
+			end
+
+			if vfx and vfx.ActiveTrail then
+				VFXService.EnableTrail(
+					vfxData.CharacterName,
+					vfxData.AttackId,
+					remoteCharacter,
+					limbName,
+					vfxData.FacingDirection,
+					true
+				)
+				local charName = vfxData.CharacterName
+				local attackId = vfxData.AttackId
+				local facingDir = vfxData.FacingDirection
+				task.delay(duration, function()
+					VFXService.EnableTrail(charName, attackId, remoteCharacter, limbName, facingDir, false)
+				end)
+			end
 		elseif vfxType == "HitEffect" then
-			VFXService.PlayHitEffect(vfxData.Position, vfxData.HitType, vfxData.Direction)
-			if vfxData.AttackVFX then
-				VFXService.PlayAttackVFX(vfxData.AttackVFX, remoteCharacter, vfxData.Position, vfxData.Direction)
+			if vfxData.VFX_OnHit and vfxData.CharacterName and vfxData.AttackId then
+				VFXService.PlayAtPosition(
+					vfxData.CharacterName,
+					vfxData.AttackId,
+					vfxData.VFX_OnHit,
+					vfxData.Position,
+					0.5
+				)
 			end
 		end
 	end)

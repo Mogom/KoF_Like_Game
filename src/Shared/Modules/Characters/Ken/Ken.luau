@@ -84,7 +84,12 @@ Ken.Attacks.Punch = {
 		Size = Vector3.new(4, 5, 4),
 		Offset = Vector3.new(0, 0, -2),
 	},
-	VFX_Name = "LightPunch",
+	-- VFX: Startup sigue la extremidad, OnHit en posición de impacto
+	VFX = {
+		Startup = "Startup",
+		Active = "Active",
+		OnHit = "OnHit",
+	},
 	-- Para combos: cada golpe sucesivo usa la extremidad correspondiente
 	-- Punch1 → puño derecho, Punch2 → puño izquierdo, Punch3 → patada derecha
 	VFX_Limbs = { "RightHand", "LeftHand", "RightFoot" },
@@ -122,19 +127,13 @@ Ken.Attacks.HeavyPunch = {
 		Size = Vector3.new(4, 3, 5),
 		Offset = Vector3.new(0, 0, -4),
 	},
-	-- VFX de swing: se reproduce al INICIAR el ataque (no necesita conectar)
-	-- El nombre debe coincidir con un objeto dentro de Characters/Ken/VFX/
-	VFX_Name = "FirePunch",
-	VFX_Limb = "RightHand", -- Extremidad donde se posiciona el VFX
-	-- VFX de impacto: se reproduce SOLO al conectar el golpe
-	AttackVFX = {
-		Type = "FireHand",
-		Color = Color3.fromRGB(255, 80, 0),
-		CoreColor = Color3.fromRGB(255, 220, 60),
-		Size = 1.8,
-		Duration = 0.35,
-		FlameCount = 12,
+	-- VFX: Startup sigue la mano, OnHit en posición de impacto
+	VFX = {
+		Startup = "Startup",
+		Active = "Active",
+		OnHit = "OnHit",
 	},
+	VFX_Limb = "RightHand",
 }
 
 -- ============================================
@@ -200,7 +199,9 @@ Ken.Attacks.CrouchHeavy = {
 		Size = Vector3.new(5, 3, 5),
 		Offset = Vector3.new(0, -2, -3),
 	},
-	VFX_Name = "FirePunch",
+	VFX = {
+		Startup = "Startup",
+	},
 	VFX_Limb = "RightFoot", -- La barrida usa el pie
 }
 
@@ -264,7 +265,9 @@ Ken.Attacks.AirHeavy = {
 		Size = Vector3.new(5, 4, 5),
 		Offset = Vector3.new(0, -2, -3),
 	},
-	VFX_Name = "AirHeavy",
+	VFX = {
+		Startup = "Startup",
+	},
 	VFX_Limb = "RightHand",
 }
 
