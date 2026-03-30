@@ -1,16 +1,17 @@
 -- VFXService: Sistema de VFX pre-construidos (Model/Attachment)
 -- Los VFX se crean en Roblox Studio y se almacenan en Characters/<Name>/VFX/<AttackId>/
--- En runtime: clone → posicionar → emitir partículas/trails → destruir
+-- En runtime: los efectos (ParticleEmitter/Trail/Beam/Light) se clonan directo al
+-- Attachment del limb declarado en VFX_Limb, sin replicar partes ni rastrear CFrame.
 --
 -- API:
---   VFXService.Play(characterName, attackId, vfxName, character, limbName, facingDir, duration)
+--   VFXService.Play(characterName, attackId, vfxName, character, limbName, facingDir, duration, forceBurst)
 --   VFXService.PlayAtPosition(characterName, attackId, vfxName, position, duration)
 --   VFXService.EnableTrail(characterName, attackId, character, limbName, facingDir, enabled)
 --   VFXService.HurtFlash(character, hitstopFrames)
 --
 -- TIPOS DE VFX EN UN ATAQUE:
---   Startup     → se reproduce al INICIAR el ataque, sigue la extremidad (Startup + Active frames)
---   Active      → se reproduce durante los ACTIVE FRAMES, sigue la extremidad (sin importar si conecta)
+--   Startup     → burst al INICIAR el ataque, en el Attachment del limb
+--   Active      → burst durante los ACTIVE FRAMES, en el Attachment del limb (sin importar si conecta)
 --   OnHit       → se reproduce SOLO al CONECTAR el golpe, en la posición de impacto
 --   ActiveTrail → trail activo durante los Active frames (se parentea al limb)
 --
@@ -46,6 +47,15 @@ local TweenService = game:GetService("TweenService")
 local VFXService = {}
 
 local CharactersFolder = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Characters")
+
+-- =============================================
+-- CONFIGURACIÓN DE TIMINGS (AJUSTABLES)
+-- =============================================
+-- Cambia estos valores para ajustar qué tan rápido desaparecen los VFX
+local BURST_THRESHOLD = 0.2 -- Duración mínima para usar modo continuo (vs burst)
+local FADE_OUT_DURATION = 0.01 -- Tiempo del fade out (en segundos) | Reduce para más rápido
+local CLEANUP_DELAY = 0.01 -- Espera antes de destruir clone (en segundos) | Reduce para más rápido
+local MAX_LINGER_TIME = 0.1 -- Máximo tiempo para que las partículas vivan después de desactivarlas | AUMENTA si quieres que se vean más, REDUCE para limpiarlas rápido
 
 -- =============================================
 -- CACHE Y BÚSQUEDA DE TEMPLATES
@@ -178,15 +188,17 @@ local function activateEmitters(vfxClone)
 end
 
 -- Desactiva emitters, fade out y destruir
--- lingerTime: tiempo extra para que las partículas ya emitidas terminen su Lifetime
+-- lingerTime: tiempo extra para que las partículas ya emitidas terminen su Lifetime (respeta MAX_LINGER_TIME)
 local function cleanupVFX(vfxClone, emitters, lingerTime)
-	-- Calcular el mayor Lifetime de las partículas para dejarlas terminar
+	-- Calcular el mayor Lifetime de las partículas para dejarlas terminar (con máximo cap)
 	if not lingerTime then
 		lingerTime = 0
 		if emitters then
 			for _, emitter in ipairs(emitters) do
 				if emitter and emitter.Parent then
-					local maxLife = emitter.Lifetime.Max or 0
+					-- Permitir override por atributo si existe
+					local maxLife = emitter:GetAttribute("MaxLingerTime")
+						or math.min(emitter.Lifetime.Max or 0, MAX_LINGER_TIME)
 					if maxLife > lingerTime then
 						lingerTime = maxLife
 					end
@@ -194,6 +206,8 @@ local function cleanupVFX(vfxClone, emitters, lingerTime)
 			end
 		end
 	end
+	-- Respetar el máximo global
+	lingerTime = math.min(lingerTime, MAX_LINGER_TIME)
 
 	-- Desactivar emisión (no emitir nuevas partículas)
 	if emitters then
@@ -210,7 +224,7 @@ local function cleanupVFX(vfxClone, emitters, lingerTime)
 			return
 		end
 
-		local fadeInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local fadeInfo = TweenInfo.new(FADE_OUT_DURATION, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 		for _, desc in pairs(vfxClone:GetDescendants()) do
 			if desc:IsA("BasePart") then
 				TweenService:Create(desc, fadeInfo, { Transparency = 1 }):Play()
@@ -220,7 +234,7 @@ local function cleanupVFX(vfxClone, emitters, lingerTime)
 			TweenService:Create(vfxClone, fadeInfo, { Transparency = 1 }):Play()
 		end
 
-		task.delay(0.3, function()
+		task.delay(CLEANUP_DELAY, function()
 			if vfxClone and vfxClone.Parent then
 				vfxClone:Destroy()
 			end
@@ -229,17 +243,13 @@ local function cleanupVFX(vfxClone, emitters, lingerTime)
 end
 
 -- =============================================
--- Play: Clona VFX y lo adjunta a una extremidad del personaje.
--- Sigue la extremidad durante toda la duración.
--- characterName:   string → nombre del personaje (ej: "Ken")
--- attackId:        string → Id del ataque (ej: "HeavyPunch")
--- vfxName:         string → nombre del VFX dentro de la carpeta del ataque (ej: "Startup")
--- character:       Model  → modelo del personaje
--- limbName:        string → extremidad donde posicionar (default: "RightHand")
--- facingDirection: string → "R" o "L" (para espejear extremidad)
--- duration:        number → duración en segundos
+-- Play: Clona los efectos del VFX directamente en el Attachment del limb.
+-- En lugar de clonar una parte entera y seguirla por CFrame cada frame,
+-- usamos el Attachment que ya existe dentro de la parte declarada en VFX_Limb.
+-- Esto es más preciso y visualmente claro.
+-- Si forceBurst es true o la duración < BURST_THRESHOLD, emite un burst instantáneo.
 -- =============================================
-function VFXService.Play(characterName, attackId, vfxName, character, limbName, facingDirection, duration)
+function VFXService.Play(characterName, attackId, vfxName, character, limbName, facingDirection, duration, forceBurst)
 	if not characterName or not attackId or not vfxName or not character then
 		return
 	end
@@ -261,28 +271,87 @@ function VFXService.Play(characterName, attackId, vfxName, character, limbName, 
 
 	duration = duration or 0.4
 
-	local vfxClone = template:Clone()
-	vfxClone.Name = "VFX_" .. attackId .. "_" .. vfxName
-	prepareVFXInstance(vfxClone)
-	vfxClone.Parent = workspace
+	-- Usar el Attachment que ya existe dentro del limb para posicionamiento preciso
+	local attachment = limb:FindFirstChildWhichIsA("Attachment")
+	if not attachment then
+		attachment = Instance.new("Attachment")
+		attachment.Name = "VFXAttachment"
+		attachment.Parent = limb
+	end
 
-	positionVFX(vfxClone, limb.CFrame)
+	-- Clonar los efectos visuales del template directo al Attachment del limb
+	local clonedEffects = {}
+	for _, desc in pairs(template:GetDescendants()) do
+		if desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("Beam") or desc:IsA("Light") then
+			local clone = desc:Clone()
+			clone.Parent = attachment
+			table.insert(clonedEffects, clone)
+		end
+	end
 
-	local emitters = activateEmitters(vfxClone)
+	if #clonedEffects == 0 then
+		return
+	end
 
-	local elapsed = 0
-	local connection
-	connection = RunService.RenderStepped:Connect(function(dt)
-		elapsed += dt
+	local useBurst = forceBurst or (duration < BURST_THRESHOLD)
 
-		if elapsed >= duration or not limb or not limb.Parent then
-			connection:Disconnect()
-			cleanupVFX(vfxClone, emitters)
-			return
+	if useBurst then
+		-- BURST MODE: Emit partículas de golpe, se destruyen tras linger time
+		local maxLifetime = 0
+		for _, effect in ipairs(clonedEffects) do
+			if effect:IsA("ParticleEmitter") then
+				local burstCount = effect:GetAttribute("BurstCount") or math.max(math.ceil(effect.Rate * 0.3), 8)
+				effect:Emit(burstCount)
+				local life = effect:GetAttribute("MaxLingerTime")
+					or math.min(effect.Lifetime.Max or 0.5, MAX_LINGER_TIME)
+				if life > maxLifetime then
+					maxLifetime = life
+				end
+			end
 		end
 
-		positionVFX(vfxClone, limb.CFrame)
-	end)
+		local lingerDuration = math.min(maxLifetime, MAX_LINGER_TIME)
+		task.delay(lingerDuration + CLEANUP_DELAY, function()
+			for _, effect in ipairs(clonedEffects) do
+				if effect and effect.Parent then
+					effect:Destroy()
+				end
+			end
+		end)
+	else
+		-- CONTINUOUS MODE: Emitir partículas durante toda la duración
+		for _, effect in ipairs(clonedEffects) do
+			if effect:IsA("ParticleEmitter") then
+				effect.Enabled = true
+			end
+		end
+
+		task.delay(duration, function()
+			-- Desactivar emisión
+			local lingerTime = 0
+			for _, effect in ipairs(clonedEffects) do
+				if effect and effect.Parent then
+					if effect:IsA("ParticleEmitter") then
+						effect.Enabled = false
+						local maxLife = effect:GetAttribute("MaxLingerTime")
+							or math.min(effect.Lifetime.Max or 0, MAX_LINGER_TIME)
+						if maxLife > lingerTime then
+							lingerTime = maxLife
+						end
+					end
+				end
+			end
+			lingerTime = math.min(lingerTime, MAX_LINGER_TIME)
+
+			task.delay(lingerTime + CLEANUP_DELAY, function()
+				for _, effect in ipairs(clonedEffects) do
+					if effect and effect.Parent then
+						effect:Destroy()
+					end
+				end
+			end)
+		end)
+	end
 end
 
 -- =============================================

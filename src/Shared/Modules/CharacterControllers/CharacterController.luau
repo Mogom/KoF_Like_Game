@@ -274,7 +274,8 @@ function CharacterController.new(character, machine, characterName)
 					remoteCharacter,
 					limbName,
 					vfxData.FacingDirection,
-					duration
+					vfxData.Startup or 0,
+					true -- forceBurst: burst como en Active
 				)
 			end
 

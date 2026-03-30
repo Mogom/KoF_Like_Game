@@ -77,6 +77,10 @@ Ryu.Attacks.Punch = {
 		Size = Vector3.new(4, 5, 4),
 		Offset = Vector3.new(0, 0, -2),
 	},
+	VFX = {
+		Active = "Active",
+	},
+	VFX_Limbs = {"RightHand", "LeftHand", "RightFoot"}, 
 }
 
 -- Puño pesado con retroceso (Standing Heavy)
@@ -111,6 +115,14 @@ Ryu.Attacks.HeavyPunch = {
 		Size = Vector3.new(4, 3, 5),
 		Offset = Vector3.new(0, 0, -4),
 	},
+	VFX = {
+		Startup = "Startup",
+		Active = "Active",
+		OnHit = "OnHit",
+	},
+	-- Para combos: cada golpe sucesivo usa la extremidad correspondiente
+	-- Punch1 → puño derecho, Punch2 → puño izquierdo, Punch3 → patada derecha
+	VFX_Limb = "RightHand",
 }
 
 -- ============================================
@@ -150,7 +162,7 @@ Ryu.Attacks.CrouchPunch = {
 Ryu.Attacks.CrouchHeavy = {
 	Id = "CrouchHeavy",
 	Startup = 10 / 60,
-	Active = 4 / 60,
+	Active = 10 / 60,
 	Recovery = 18 / 60,
 	Animation = "CrouchHeavy",
 	SoundEffect = "Punch",
@@ -177,6 +189,11 @@ Ryu.Attacks.CrouchHeavy = {
 		Size = Vector3.new(5, 3, 5),
 		Offset = Vector3.new(0, -2, -3),
 	},
+	VFX = {
+		Startup = "Startup",
+		Active = "Active",
+	},
+	VFX_Limb = "RightFoot",
 }
 
 -- ============================================

@@ -92,7 +92,7 @@ Ken.Attacks.Punch = {
 	},
 	-- Para combos: cada golpe sucesivo usa la extremidad correspondiente
 	-- Punch1 → puño derecho, Punch2 → puño izquierdo, Punch3 → patada derecha
-	VFX_Limbs = { "RightHand", "LeftHand", "RightFoot" },
+	VFX_Limbs = { "LeftHand", "LeftHand", "RightFoot" },
 }
 
 -- Puño pesado con avance (dash positivo, agresivo)

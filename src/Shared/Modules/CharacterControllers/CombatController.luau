@@ -577,9 +577,9 @@ function CombatController:RegisterStates(machine)
 					limbName = attack.VFX_Limb
 				end
 
-				-- Startup VFX: sigue la extremidad durante Startup + Active
+				-- Startup VFX: burst instantáneo al iniciar el ataque
 				if attack.VFX.Startup then
-					local vfxDuration = (attack.Startup or 0) + (attack.Active or 0)
+					local vfxDuration = attack.Startup or 0
 					VFXService.Play(
 						self.context.characterName,
 						attack.Id,
@@ -587,7 +587,8 @@ function CombatController:RegisterStates(machine)
 						self.context.character,
 						limbName,
 						self.context.currentDirection,
-						vfxDuration
+						vfxDuration,
+						true -- forceBurst: burst como en Active
 					)
 				end
 
