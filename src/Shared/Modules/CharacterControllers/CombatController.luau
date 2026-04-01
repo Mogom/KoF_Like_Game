@@ -560,23 +560,35 @@ function CombatController:RegisterStates(machine)
 				SoundManager.PlaySound(attack.SoundEffect, self.context.root.Position, attack.SoundVolume or 0.5)
 			end
 
+			local comboIndex = self.context.punchComboCount or 1
+			if comboIndex < 1 then
+				comboIndex = 1
+			end
+
+			local attackLimbName = "RightHand"
+			if attack.VFX_Limbs and comboIndex and #attack.VFX_Limbs > 0 then
+				local idx = ((comboIndex - 1) % #attack.VFX_Limbs) + 1
+				attackLimbName = attack.VFX_Limbs[idx]
+			elseif attack.VFX_Limb then
+				attackLimbName = attack.VFX_Limb
+			end
+
+			-- Flash del limb atacante: se reproduce SIEMPRE al ejecutar el ataque (no al conectar)
+			if attack.HitLimbFlash and attack.HitLimbFlash.Enabled then
+				local flashDuration = (attack.Startup or 0) + (attack.Active or 0)
+				local flashConfig = table.clone(attack.HitLimbFlash)
+				flashConfig.Duration = flashDuration
+				VFXService.AttackLimbFlash(
+					self.context.character,
+					attackLimbName,
+					self.context.currentDirection,
+					flashConfig,
+					0
+				)
+			end
+
 			-- VFX: se reproduce al INICIAR el ataque (Startup y ActiveTrail)
 			if attack.VFX and self.context.characterName then
-				-- comboIndex: para combos con VFX_Limbs, indica qué extremidad usar
-				local comboIndex = self.context.punchComboCount or 1
-				if comboIndex < 1 then
-					comboIndex = 1
-				end
-
-				-- Resolver limbName
-				local limbName = "RightHand"
-				if attack.VFX_Limbs and comboIndex then
-					local idx = ((comboIndex - 1) % #attack.VFX_Limbs) + 1
-					limbName = attack.VFX_Limbs[idx]
-				elseif attack.VFX_Limb then
-					limbName = attack.VFX_Limb
-				end
-
 				-- Startup VFX: burst instantáneo al iniciar el ataque
 				if attack.VFX.Startup then
 					local vfxDuration = attack.Startup or 0
@@ -585,7 +597,7 @@ function CombatController:RegisterStates(machine)
 						attack.Id,
 						attack.VFX.Startup,
 						self.context.character,
-						limbName,
+						attackLimbName,
 						self.context.currentDirection,
 						vfxDuration,
 						true -- forceBurst: burst como en Active
@@ -598,7 +610,7 @@ function CombatController:RegisterStates(machine)
 					local activeAttackId = attack.Id
 					local activeVfxName = attack.VFX.Active
 					local activeCharacter = self.context.character
-					local activeLimb = limbName
+					local activeLimb = attackLimbName
 					local activeDir = self.context.currentDirection
 					local activeDuration = attack.Active or 0.2
 					task.delay(attack.Startup or 0, function()
@@ -620,14 +632,14 @@ function CombatController:RegisterStates(machine)
 						self.context.characterName,
 						attack.Id,
 						self.context.character,
-						limbName,
+						attackLimbName,
 						self.context.currentDirection,
 						true
 					)
 					local trailCharName = self.context.characterName
 					local trailAttackId = attack.Id
 					local trailCharacter = self.context.character
-					local trailLimb = limbName
+					local trailLimb = attackLimbName
 					local trailDir = self.context.currentDirection
 					task.delay((attack.Startup or 0) + (attack.Active or 0), function()
 						VFXService.EnableTrail(trailCharName, trailAttackId, trailCharacter, trailLimb, trailDir, false)
@@ -639,7 +651,26 @@ function CombatController:RegisterStates(machine)
 					CharacterName = self.context.characterName,
 					AttackId = attack.Id,
 					VFX = attack.VFX,
-					VFX_Limb = limbName,
+					VFX_Limb = attackLimbName,
+					HitLimbFlash = attack.HitLimbFlash,
+					Startup = attack.Startup,
+					Active = attack.Active,
+					FacingDirection = self.context.currentDirection,
+				})
+			end
+
+			if
+				not attack.VFX
+				and self.context.characterName
+				and attack.HitLimbFlash
+				and attack.HitLimbFlash.Enabled
+			then
+				ReplicateVFXEvent:FireServer("SwingVFX", {
+					CharacterName = self.context.characterName,
+					AttackId = attack.Id,
+					VFX = nil,
+					VFX_Limb = attackLimbName,
+					HitLimbFlash = attack.HitLimbFlash,
 					Startup = attack.Startup,
 					Active = attack.Active,
 					FacingDirection = self.context.currentDirection,

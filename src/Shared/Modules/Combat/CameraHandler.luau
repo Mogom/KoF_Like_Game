@@ -27,14 +27,65 @@ local opponentRoot = nil
 local currentCharacter = nil
 local humanoidRootPart = nil
 
-UserInputService.MouseDeltaSensitivity = 0
-camera.CameraType = Enum.CameraType.Scriptable
+-- Control de modo de juego: la cámara 2D solo funciona en Training/Versus
+local gameModeActive = false
+
+-- NO forzar cámara scriptable al cargar - solo cuando estemos en modo de juego
+-- UserInputService.MouseDeltaSensitivity = 0
+-- camera.CameraType = Enum.CameraType.Scriptable
 
 -- Vincula character local y su root para rastreo de cámara
 local function bindCharacter(character)
+	-- print("🔍 [Camera] Binding character:", character and character.Name or "nil")
 	currentCharacter = character
 	if currentCharacter then
-		humanoidRootPart = currentCharacter:WaitForChild("HumanoidRootPart")
+		-- Wait for character to be fully parented
+		local maxWait = 5
+		local elapsed = 0
+		while not currentCharacter.Parent and elapsed < maxWait do
+			task.wait(0.1)
+			elapsed = elapsed + 0.1
+		end
+
+		if not currentCharacter.Parent then
+			print("🔍 [Camera] Character was destroyed before bind completed")
+			humanoidRootPart = nil
+			return
+		end
+
+		-- Retry loop for HumanoidRootPart
+		local attempts = 0
+		humanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
+		while not humanoidRootPart and attempts < 50 and currentCharacter.Parent do
+			task.wait(0.1)
+			attempts = attempts + 1
+			humanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
+		end
+
+		if not humanoidRootPart then
+			warn(
+				"⚠️ Camera bind skipped: missing HumanoidRootPart in",
+				currentCharacter.Name,
+				"after",
+				attempts * 0.1,
+				"seconds"
+			)
+			print(
+				"🔍 [Camera] Character children:",
+				table.concat(
+					(function()
+						local names = {}
+						for _, child in ipairs(currentCharacter:GetChildren()) do
+							table.insert(names, child.Name)
+						end
+						return names
+					end)(),
+					", "
+				)
+			)
+		else
+			print("🔍 [Camera] Successfully bound to", currentCharacter.Name)
+		end
 	else
 		humanoidRootPart = nil
 	end
@@ -44,6 +95,16 @@ bindCharacter(player.Character or player.CharacterAdded:Wait())
 
 player.CharacterAdded:Connect(function(character)
 	bindCharacter(character)
+end)
+
+-- Also detect manual Character assignment (skin swaps)
+player:GetPropertyChangedSignal("Character"):Connect(function()
+	local character = player.Character
+	if character then
+		task.defer(function()
+			bindCharacter(character)
+		end)
+	end
 end)
 
 -- Busca el oponente (dummy o jugador) para calcular punto medio
@@ -118,6 +179,11 @@ end
 
 -- Actualiza posición y orientación de la cámara cada frame
 local function updateCamera(dt)
+	-- Solo actualizar cámara 2D si estamos en modo de juego
+	if not gameModeActive then
+		return
+	end
+
 	if not humanoidRootPart or not humanoidRootPart.Parent then
 		return
 	end
@@ -189,6 +255,27 @@ function CameraHandler:Reset()
 	CAMERA.lookAtOffset = 3
 	CAMERA.zoomEnabled = true
 	currentZoom = CAMERA.baseDistance
+end
+
+-- Activa/desactiva el modo de juego (cámara 2D)
+function CameraHandler:SetGameModeActive(active)
+	gameModeActive = active
+	-- print("📹 [Camera] GameMode active:", active)
+
+	if active then
+		-- Activar cámara 2D
+		camera.CameraType = Enum.CameraType.Scriptable
+		UserInputService.MouseDeltaSensitivity = 0
+	else
+		-- Restaurar cámara normal de Roblox
+		camera.CameraType = Enum.CameraType.Custom
+		UserInputService.MouseDeltaSensitivity = 1
+	end
+end
+
+-- Retorna si el modo de juego está activo
+function CameraHandler:IsGameModeActive()
+	return gameModeActive
 end
 
 return CameraHandler

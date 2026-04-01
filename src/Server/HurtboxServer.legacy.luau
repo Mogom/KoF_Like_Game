@@ -38,12 +38,64 @@ local function setupCharacterHurtbox(character)
 		return
 	end
 
-	local humanoid = character:FindFirstChild("Humanoid")
+	print(
+		"🔍 [Hurtbox] Setting up hurtbox for",
+		character.Name,
+		"| Parent:",
+		character.Parent and character.Parent.Name or "nil"
+	)
+
+	-- Wait for character to be fully parented and initialized
+	local maxWait = 5
+	local elapsed = 0
+	while not character.Parent and elapsed < maxWait do
+		task.wait(0.1)
+		elapsed = elapsed + 0.1
+	end
+
+	if not character.Parent then
+		print("🔍 [Hurtbox] Character was destroyed before setup completed:", character.Name)
+		return
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local root = character:FindFirstChild("HumanoidRootPart")
 
+	-- Retry loop if components aren't ready yet
+	local attempts = 0
+	while (not humanoid or not root) and attempts < 50 and character.Parent do
+		task.wait(0.1)
+		attempts = attempts + 1
+		if not humanoid then
+			humanoid = character:FindFirstChildOfClass("Humanoid")
+		end
+		if not root then
+			root = character:FindFirstChild("HumanoidRootPart")
+		end
+	end
+
 	if not humanoid or not root then
-		character:WaitForChild("Humanoid")
-		character:WaitForChild("HumanoidRootPart")
+		warn(
+			"⚠️ Hurtbox skipped: missing Humanoid/HumanoidRootPart in",
+			character.Name,
+			"after",
+			attempts * 0.1,
+			"seconds"
+		)
+		print(
+			"🔍 [Hurtbox] Character children:",
+			table.concat(
+				(function()
+					local names = {}
+					for _, child in ipairs(character:GetChildren()) do
+						table.insert(names, child.Name)
+					end
+					return names
+				end)(),
+				", "
+			)
+		)
+		return
 	end
 
 	Hurtbox.new(character)
@@ -51,22 +103,47 @@ local function setupCharacterHurtbox(character)
 	print("🟩 Server hurtbox created for", character.Name)
 end
 
-Players.PlayerAdded:Connect(function(player)
+-- Track characters we've already set up to avoid duplicates
+local setupCharacters = {}
+
+local function onCharacterAvailable(player, character)
+	if not character or setupCharacters[character] then
+		return
+	end
+	setupCharacters[character] = true
+	setupCharacterHurtbox(character)
+
+	-- Cleanup tracking when character is destroyed
+	character.Destroying:Connect(function()
+		setupCharacters[character] = nil
+	end)
+end
+
+local function setupPlayerHooks(player)
+	-- CharacterAdded for LoadCharacter() calls
 	player.CharacterAdded:Connect(function(character)
-		setupCharacterHurtbox(character)
+		onCharacterAvailable(player, character)
 	end)
 
+	-- PropertyChanged for manual Character assignment (skin swaps)
+	player:GetPropertyChangedSignal("Character"):Connect(function()
+		local character = player.Character
+		if character then
+			-- Small delay to let the skin fully initialize
+			task.defer(function()
+				onCharacterAvailable(player, character)
+			end)
+		end
+	end)
+
+	-- Current character
 	if player.Character then
-		setupCharacterHurtbox(player.Character)
+		onCharacterAvailable(player, player.Character)
 	end
-end)
+end
+
+Players.PlayerAdded:Connect(setupPlayerHooks)
 
 for _, player in ipairs(Players:GetPlayers()) do
-	if player.Character then
-		setupCharacterHurtbox(player.Character)
-	end
-
-	player.CharacterAdded:Connect(function(character)
-		setupCharacterHurtbox(character)
-	end)
+	setupPlayerHooks(player)
 end

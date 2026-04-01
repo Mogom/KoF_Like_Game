@@ -55,7 +55,7 @@ Ryu.Attacks.Punch = {
 	Id = "Punch",
 	Startup = 4 / 60,
 	Active = 4 / 60,
-	Recovery = 10 / 60,
+	Recovery = 12 / 60,
 	AnimationBase = "Punch",
 	SoundEffect = "Punch",
 	SoundVolume = 0.7,
@@ -78,9 +78,17 @@ Ryu.Attacks.Punch = {
 		Offset = Vector3.new(0, 0, -2),
 	},
 	VFX = {
+		Startup = "Startup",
 		Active = "Active",
+		ActiveTrail = "ActiveTrail",
 	},
-	VFX_Limbs = {"RightHand", "LeftHand", "RightFoot"}, 
+	HitLimbFlash = {
+		Enabled = true,
+		Color = "Red",
+		FillTransparency = 0.8,
+		OutlineTransparency = 0.2,
+	},
+	VFX_Limbs = { "RightHand", "LeftHand", "RightFoot" },
 }
 
 -- Puño pesado con retroceso (Standing Heavy)
@@ -359,7 +367,7 @@ Ryu.Commands = {
 -- ============================================
 
 Ryu.Skins = {
-	Default = "Dummy", -- Cambiar por rbxassetid cuando exista el modelo de Ryu
+	Default = "Default", -- "Dummy" = usar avatar estándar, cambiar cuando exista el modelo exportado
 }
 
 return Ryu

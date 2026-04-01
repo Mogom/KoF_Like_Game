@@ -81,9 +81,13 @@ function CharacterMotor:SetOpponent(opponentRoot)
 	self.context.opponentRoot = opponentRoot
 	self.context.opponent = opponentRoot and opponentRoot.Parent or nil
 
-	-- Actualizar OverlapParams: excluir solo nuestro personaje
-	-- (el oponente se filtra en IsBlockingPart por parte individual)
-	self.overlapParams.FilterDescendantsInstances = { self.context.character }
+	-- Actualizar OverlapParams: excluir nuestro personaje Y el oponente
+	-- Esto evita que los personajes se bloqueen entre sí durante pushback
+	local filterList = { self.context.character }
+	if self.context.opponent then
+		table.insert(filterList, self.context.opponent)
+	end
+	self.overlapParams.FilterDescendantsInstances = filterList
 end
 
 -- Cambia la dirección de movimiento (-1, 0, 1). Bloqueado durante hitstun/attack/knockdown
@@ -98,7 +102,6 @@ function CharacterMotor:SetMoveDirection(dir)
 	end
 
 	self.context.moveDirection = dir
-	--self:_updateBlockState()
 end
 
 -- Activa/desactiva crouch y transiciona el estado de la máquina

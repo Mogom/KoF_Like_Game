@@ -42,11 +42,20 @@ ReplicateVFXEvent.Parent = RemoteEvents
 -- 🎯 MANEJAR REQUESTS DE GAME MODES
 -- ============================================
 
-StartTrainingEvent.OnServerEvent:Connect(function(player)
+StartTrainingEvent.OnServerEvent:Connect(function(player, selectedCharacter, selectedDummyCharacter)
+	if typeof(selectedCharacter) == "string" and selectedCharacter ~= "" then
+		player:SetAttribute("SelectedCharacter", selectedCharacter)
+	end
+	if typeof(selectedDummyCharacter) == "string" and selectedDummyCharacter ~= "" then
+		player:SetAttribute("SelectedDummyCharacter", selectedDummyCharacter)
+	end
 	GameModeManager.StartTrainingMode(player)
 end)
 
-StartVersusEvent.OnServerEvent:Connect(function(player)
+StartVersusEvent.OnServerEvent:Connect(function(player, selectedCharacter)
+	if typeof(selectedCharacter) == "string" and selectedCharacter ~= "" then
+		player:SetAttribute("SelectedCharacter", selectedCharacter)
+	end
 	GameModeManager.StartVersus1v1Mode(player)
 end)
 

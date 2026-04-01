@@ -8,6 +8,7 @@
 --   VFXService.PlayAtPosition(characterName, attackId, vfxName, position, duration)
 --   VFXService.EnableTrail(characterName, attackId, character, limbName, facingDir, enabled)
 --   VFXService.HurtFlash(character, hitstopFrames)
+--   VFXService.AttackLimbFlash(character, limbName, facingDir, flashConfig, hitstopFrames)
 --
 -- TIPOS DE VFX EN UN ATAQUE:
 --   Startup     → burst al INICIAR el ataque, en el Attachment del limb
@@ -176,7 +177,7 @@ local function positionVFX(vfxClone, cframe)
 end
 
 -- Activa todos los ParticleEmitters y retorna la lista
-local function activateEmitters(vfxClone)
+local function _activateEmitters(vfxClone)
 	local emitters = {}
 	for _, desc in pairs(vfxClone:GetDescendants()) do
 		if desc:IsA("ParticleEmitter") then
@@ -189,7 +190,7 @@ end
 
 -- Desactiva emitters, fade out y destruir
 -- lingerTime: tiempo extra para que las partículas ya emitidas terminen su Lifetime (respeta MAX_LINGER_TIME)
-local function cleanupVFX(vfxClone, emitters, lingerTime)
+local function _cleanupVFX(vfxClone, emitters, lingerTime)
 	-- Calcular el mayor Lifetime de las partículas para dejarlas terminar (con máximo cap)
 	if not lingerTime then
 		lingerTime = 0
@@ -399,10 +400,69 @@ end
 
 -- =============================================
 -- EnableTrail: Activa/desactiva un VFX de trail en una extremidad.
--- El trail se parenta directamente al limb para seguirlo automáticamente.
+-- Modo híbrido:
+-- 1) Si el limb ya tiene trails preinstalados (atributo CombatActiveTrail=true),
+--    solo se activan/desactivan (no se clonan ni destruyen).
+-- 2) Si no existen, usa fallback clonado desde template ActiveTrail.
 -- =============================================
 
 local activeTrails = {}
+
+local function setTrailNodesEnabled(nodes, enabled)
+	for _, node in ipairs(nodes) do
+		if node and node.Parent then
+			if node:IsA("Trail") then
+				node.Enabled = enabled
+			elseif node:IsA("ParticleEmitter") then
+				node.Enabled = enabled
+			end
+		end
+	end
+end
+
+local function cleanupTrailHandle(handle)
+	if not handle then
+		return
+	end
+
+	if handle.Mode == "PreAttached" then
+		setTrailNodesEnabled(handle.Nodes or {}, false)
+		return
+	end
+
+	local instance = handle.Instance
+	if instance and instance.Parent then
+		local nodes = {}
+		for _, desc in pairs(instance:GetDescendants()) do
+			if desc:IsA("Trail") or desc:IsA("ParticleEmitter") then
+				table.insert(nodes, desc)
+			end
+		end
+		setTrailNodesEnabled(nodes, false)
+
+		task.delay(0.3, function()
+			if instance and instance.Parent then
+				instance:Destroy()
+			end
+		end)
+	end
+end
+
+local function collectPreAttachedTrailNodes(limb, attackId)
+	local nodes = {}
+	for _, desc in pairs(limb:GetDescendants()) do
+		if desc:IsA("Trail") or desc:IsA("ParticleEmitter") then
+			local tagged = desc:GetAttribute("CombatActiveTrail") == true
+			if tagged then
+				local onlyAttackId = desc:GetAttribute("AttackId")
+				if onlyAttackId == nil or onlyAttackId == attackId then
+					table.insert(nodes, desc)
+				end
+			end
+		end
+	end
+	return nodes
+end
 
 function VFXService.EnableTrail(characterName, attackId, character, limbName, facingDirection, enabled)
 	if not character or not attackId then
@@ -411,25 +471,32 @@ function VFXService.EnableTrail(characterName, attackId, character, limbName, fa
 
 	local key = tostring(character) .. "_" .. attackId
 
+	limbName = limbName or "RightHand"
+	if facingDirection == "L" and MIRROR_MAP[limbName] then
+		limbName = MIRROR_MAP[limbName]
+	end
+
+	local limb = findLimb(character, limbName)
+	if not limb then
+		return
+	end
+
 	if enabled then
 		-- Limpiar trail anterior si existe
-		local old = activeTrails[key]
-		if old and old.Parent then
-			old:Destroy()
+		cleanupTrailHandle(activeTrails[key])
+
+		local preAttachedNodes = collectPreAttachedTrailNodes(limb, attackId)
+		if #preAttachedNodes > 0 then
+			setTrailNodesEnabled(preAttachedNodes, true)
+			activeTrails[key] = {
+				Mode = "PreAttached",
+				Nodes = preAttachedNodes,
+			}
+			return
 		end
 
 		local template = getVFXTemplate(characterName, attackId, "ActiveTrail")
 		if not template then
-			return
-		end
-
-		limbName = limbName or "RightHand"
-		if facingDirection == "L" and MIRROR_MAP[limbName] then
-			limbName = MIRROR_MAP[limbName]
-		end
-
-		local limb = findLimb(character, limbName)
-		if not limb then
 			return
 		end
 
@@ -440,34 +507,20 @@ function VFXService.EnableTrail(characterName, attackId, character, limbName, fa
 		-- Parentar al limb para que siga automáticamente
 		vfxClone.Parent = limb
 
-		-- Activar todos los Trail y ParticleEmitter
+		local clonedNodes = {}
 		for _, desc in pairs(vfxClone:GetDescendants()) do
-			if desc:IsA("Trail") then
-				desc.Enabled = true
-			elseif desc:IsA("ParticleEmitter") then
-				desc.Enabled = true
+			if desc:IsA("Trail") or desc:IsA("ParticleEmitter") then
+				table.insert(clonedNodes, desc)
 			end
 		end
+		setTrailNodesEnabled(clonedNodes, true)
 
-		activeTrails[key] = vfxClone
+		activeTrails[key] = {
+			Mode = "Cloned",
+			Instance = vfxClone,
+		}
 	else
-		local existing = activeTrails[key]
-		if existing and existing.Parent then
-			-- Desactivar trails/emitters antes de destruir para fade natural
-			for _, desc in pairs(existing:GetDescendants()) do
-				if desc:IsA("Trail") then
-					desc.Enabled = false
-				elseif desc:IsA("ParticleEmitter") then
-					desc.Enabled = false
-				end
-			end
-
-			task.delay(0.3, function()
-				if existing and existing.Parent then
-					existing:Destroy()
-				end
-			end)
-		end
+		cleanupTrailHandle(activeTrails[key])
 		activeTrails[key] = nil
 	end
 end
@@ -483,6 +536,57 @@ local HURTFLASH_FILL_TRANSPARENCY = 0.15
 local HURTFLASH_OUTLINE_TRANSPARENCY = 0.5
 local HURTFLASH_ENABLE_BLINK = false
 local HURTFLASH_BLINK_INTERVAL_FRAMES = 2
+
+local ATTACKFLASH_DEFAULT_COLOR = Color3.fromRGB(255, 60, 60)
+local ATTACKFLASH_DEFAULT_FILL_TRANSPARENCY = 0.2
+local ATTACKFLASH_DEFAULT_OUTLINE_TRANSPARENCY = 0.65
+local ATTACKFLASH_DEFAULT_DURATION = 0.08
+
+local NAMED_COLORS = {
+	red = Color3.fromRGB(255, 60, 60),
+	white = Color3.fromRGB(255, 255, 255),
+	blue = Color3.fromRGB(70, 140, 255),
+	green = Color3.fromRGB(80, 255, 120),
+	yellow = Color3.fromRGB(255, 230, 80),
+	orange = Color3.fromRGB(255, 150, 60),
+	purple = Color3.fromRGB(180, 90, 255),
+	cyan = Color3.fromRGB(90, 255, 255),
+	pink = Color3.fromRGB(255, 110, 200),
+}
+
+local function parseFlashColor(value)
+	if typeof(value) == "Color3" then
+		return value
+	end
+
+	if typeof(value) == "string" then
+		local named = NAMED_COLORS[string.lower(value)]
+		if named then
+			return named
+		end
+
+		if string.sub(value, 1, 1) == "#" and #value == 7 then
+			local hex = string.sub(value, 2)
+			local r = tonumber(string.sub(hex, 1, 2), 16)
+			local g = tonumber(string.sub(hex, 3, 4), 16)
+			local b = tonumber(string.sub(hex, 5, 6), 16)
+			if r and g and b then
+				return Color3.fromRGB(r, g, b)
+			end
+		end
+	end
+
+	if typeof(value) == "table" then
+		local r = value.R or value.r
+		local g = value.G or value.g
+		local b = value.B or value.b
+		if typeof(r) == "number" and typeof(g) == "number" and typeof(b) == "number" then
+			return Color3.fromRGB(r, g, b)
+		end
+	end
+
+	return ATTACKFLASH_DEFAULT_COLOR
+end
 
 local function cleanupHurtFlash(character)
 	local existing = character:FindFirstChild("HurtFlashHighlight")
@@ -553,6 +657,58 @@ function VFXService.HurtFlash(character, hitstopFrames)
 			if highlight and highlight.Parent then
 				highlight:Destroy()
 			end
+		end
+	end)
+end
+
+function VFXService.AttackLimbFlash(character, limbName, facingDirection, flashConfig, hitstopFrames)
+	if not character or not flashConfig or not flashConfig.Enabled then
+		return
+	end
+
+	-- Este flash usa una ventana de tiempo explícita (Duration),
+	-- para poder limitarlo exactamente a Startup + Active frames.
+	hitstopFrames = hitstopFrames -- compatibilidad de firma
+
+	limbName = limbName or "RightHand"
+	if facingDirection == "L" and MIRROR_MAP[limbName] then
+		limbName = MIRROR_MAP[limbName]
+	end
+
+	local limb = findLimb(character, limbName)
+	if not limb then
+		return
+	end
+
+	local color = parseFlashColor(flashConfig.Color)
+	local fillTransparency = flashConfig.FillTransparency
+	if typeof(fillTransparency) ~= "number" then
+		fillTransparency = ATTACKFLASH_DEFAULT_FILL_TRANSPARENCY
+	end
+
+	local outlineTransparency = flashConfig.OutlineTransparency
+	if typeof(outlineTransparency) ~= "number" then
+		outlineTransparency = ATTACKFLASH_DEFAULT_OUTLINE_TRANSPARENCY
+	end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "AttackLimbFlashHighlight"
+	highlight.FillColor = color
+	highlight.FillTransparency = math.clamp(fillTransparency, 0, 1)
+	highlight.OutlineColor = color
+	highlight.OutlineTransparency = math.clamp(outlineTransparency, 0, 1)
+	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+	highlight.Adornee = limb
+	highlight.Parent = character
+
+	local duration = flashConfig.Duration
+	if typeof(duration) ~= "number" or duration <= 0 then
+		duration = ATTACKFLASH_DEFAULT_DURATION
+	end
+
+	task.delay(duration, function()
+		if highlight and highlight.Parent then
+			highlight:Destroy()
 		end
 	end)
 end

@@ -49,6 +49,8 @@ end
 --   Si no se pasa, usa datos globales (Attacks.luau + CommandList.luau)
 function CharacterController.new(character, machine, characterName)
 	local self = setmetatable({}, CharacterController)
+	self._active = true
+	self._renderConnection = nil
 
 	local humanoid = character:WaitForChild("Humanoid")
 	local root = character:WaitForChild("HumanoidRootPart")
@@ -266,6 +268,12 @@ function CharacterController.new(character, machine, characterName)
 			local limbName = vfxData.VFX_Limb or "RightHand"
 			local duration = (vfxData.Startup or 0) + (vfxData.Active or 0)
 
+			if vfxData.HitLimbFlash and vfxData.HitLimbFlash.Enabled then
+				local flashConfig = table.clone(vfxData.HitLimbFlash)
+				flashConfig.Duration = duration
+				VFXService.AttackLimbFlash(remoteCharacter, limbName, vfxData.FacingDirection, flashConfig, 0)
+			end
+
 			if vfx and vfx.Startup then
 				VFXService.Play(
 					vfxData.CharacterName,
@@ -334,7 +342,7 @@ function CharacterController.new(character, machine, characterName)
 	end
 
 	task.spawn(function()
-		while true do
+		while self._active do
 			task.wait(2)
 			if not self.context.opponentRoot or not self.context.opponentRoot.Parent then
 				local refreshedOpponentRoot = findOpponent()
@@ -345,7 +353,10 @@ function CharacterController.new(character, machine, characterName)
 		end
 	end)
 
-	RunService.RenderStepped:Connect(function(dt)
+	self._renderConnection = RunService.RenderStepped:Connect(function(dt)
+		if not self._active then
+			return
+		end
 		self.context.machine:Update(dt)
 		self.combat:Update(dt)
 		self.motor:Update(dt)
@@ -353,6 +364,17 @@ function CharacterController.new(character, machine, characterName)
 	end)
 
 	return self
+end
+
+-- Destruye el controlador y desconecta todos los loops
+function CharacterController:Destroy()
+	-- print("🔴 [Controller] Destroying controller for", self.context.character.Name)
+	self._active = false
+
+	if self._renderConnection then
+		self._renderConnection:Disconnect()
+		self._renderConnection = nil
+	end
 end
 
 -- Sincroniza estado público (isCrouching, isBlocking, etc.) via Attributes

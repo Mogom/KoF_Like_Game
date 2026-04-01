@@ -90,6 +90,12 @@ Ken.Attacks.Punch = {
 		Active = "Active",
 		OnHit = "OnHit",
 	},
+	HitLimbFlash = {
+		Enabled = true,
+		Color = "Orange",
+		FillTransparency = 0.2,
+		OutlineTransparency = 0.7,
+	},
 	-- Para combos: cada golpe sucesivo usa la extremidad correspondiente
 	-- Punch1 → puño derecho, Punch2 → puño izquierdo, Punch3 → patada derecha
 	VFX_Limbs = { "LeftHand", "LeftHand", "RightFoot" },
@@ -362,7 +368,7 @@ Ken.Commands = {
 -- ============================================
 
 Ken.Skins = {
-	Default = "Dummy", -- Cambiar por rbxassetid cuando exista el modelo de Ken
+	Default = "Default", -- "Dummy" = usar avatar estándar, cambiar cuando exista el modelo exportado
 }
 
 return Ken

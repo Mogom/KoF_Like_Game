@@ -194,9 +194,16 @@ function DummyController:CanMoveToX(targetX)
 	local testCFrame = CFrame.new(targetX, currentPos.Y, self.lockedZ)
 	local testSize = Vector3.new(3, 5, 3)
 
+	-- Excluir dummy Y jugador del check de colisión
+	local filterList = { self.character }
+	local playerRoot = self:_getPlayerRoot()
+	if playerRoot and playerRoot.Parent then
+		table.insert(filterList, playerRoot.Parent)
+	end
+
 	local overlapParams = OverlapParams.new()
 	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
-	overlapParams.FilterDescendantsInstances = { self.character }
+	overlapParams.FilterDescendantsInstances = filterList
 	overlapParams.MaxParts = 20
 
 	local parts = workspace:GetPartBoundsInBox(testCFrame, testSize, overlapParams)
