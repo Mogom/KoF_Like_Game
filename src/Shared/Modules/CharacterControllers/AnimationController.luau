@@ -146,6 +146,10 @@ function AnimationController.new(context)
 	-- Jump
 	self.animations.Jump_R = tryLoadSequence(self.animator, AnimationsTest, "Jump_R") or self.animations.Idle_R
 	self.animations.Jump_L = tryLoadSequence(self.animator, AnimationsTest, "Jump_L") or self.animations.Idle_L
+	self.animations.DoubleJump_R = tryLoadSequence(self.animator, AnimationsTest, "DoubleJump_R")
+		or self.animations.Jump_R
+	self.animations.DoubleJump_L = tryLoadSequence(self.animator, AnimationsTest, "DoubleJump_L")
+		or self.animations.Jump_L
 
 	-- Air attacks
 	self.animations.AirPunch_R = tryLoadSequence(self.animator, AnimationsTest, "AirPunch_R") or self.animations.Punch_R

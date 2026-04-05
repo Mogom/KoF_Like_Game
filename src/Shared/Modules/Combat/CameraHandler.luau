@@ -5,99 +5,136 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
--- Cámara 2.5D lateral: zoom dinámico según distancia entre jugadores
+--[[
+	CameraHandler - Cámara 2.5D lateral optimizada para multijugador (2-4+ jugadores)
+	
+	Features:
+	- Soporta múltiples targets (jugadores, dummies, NPCs)
+	- Calcula centro de masa de todos los jugadores vivos
+	- Zoom dinámico según bounding box de todos los targets
+	- Smooth transitions con lerp y deadzone anti-jitter
+]]
+
 local CameraHandler = {}
 
+-- Configuración de cámara
 local CAMERA = {
-	baseDistance = 12,
-	baseHeight = 1.5,
+	-- Distancia base (Z offset)
+	baseDistance = 14,
+	-- Altura base sobre el centro
+	baseHeight = 2,
+	-- Offset del punto de mira (hacia arriba)
 	lookAtOffset = 3,
 
+	-- Zoom dinámico
 	zoomEnabled = true,
-	minZoom = 12,
-	maxZoom = 18,
+	minZoom = 12, -- Zoom mínimo (cuando están cerca)
+	maxZoom = 28, -- Zoom máximo (cuando están lejos)
 
-	positionSmooth = 0.2,
-	zoomSmooth = 0.15,
+	-- Separación para cálculo de zoom
+	minSeparation = 5, -- Distancia mínima entre jugadores más lejanos
+	maxSeparation = 40, -- Distancia máxima antes de zoom máximo
+
+	-- Smoothing
+	positionSmooth = 0.12, -- Lerp factor para posición (menor = más suave)
+	zoomSmooth = 0.08, -- Lerp factor para zoom
+
+	-- Anti-jitter: no mover cámara si el cambio es menor a este threshold
+	positionDeadzone = 0.05,
+	zoomDeadzone = 0.02,
 }
 
+-- Estado interno
 local currentZoom = CAMERA.baseDistance
-local opponent = nil
-local opponentRoot = nil
-local currentCharacter = nil
-local humanoidRootPart = nil
+local currentCameraPosition = Vector3.zero
+local currentLookTarget = Vector3.zero
+local initialized = false
+
+-- Lista de targets a seguir (characters con HumanoidRootPart)
+local targets = {}
 
 -- Control de modo de juego: la cámara 2D solo funciona en Training/Versus
 local gameModeActive = false
 
--- NO forzar cámara scriptable al cargar - solo cuando estemos en modo de juego
--- UserInputService.MouseDeltaSensitivity = 0
--- camera.CameraType = Enum.CameraType.Scriptable
+-- Character local del jugador
+local currentCharacter = nil
+local humanoidRootPart = nil
 
--- Vincula character local y su root para rastreo de cámara
+--------------------------------------------------------------------------------
+-- UTILIDADES
+--------------------------------------------------------------------------------
+
+-- Verifica si un target es válido (tiene HumanoidRootPart y está en workspace)
+local function isValidTarget(target)
+	if not target or not target.Parent then
+		return false
+	end
+	local root = target:FindFirstChild("HumanoidRootPart")
+	if not root or not root.Parent then
+		return false
+	end
+	-- Verificar si el humanoid está vivo (opcional, para modo versus)
+	local humanoid = target:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.Health <= 0 then
+		return false
+	end
+	return true
+end
+
+-- Obtiene la posición del HumanoidRootPart de un target
+local function getTargetPosition(target)
+	local root = target:FindFirstChild("HumanoidRootPart")
+	if root then
+		return root.Position
+	end
+	return nil
+end
+
+--------------------------------------------------------------------------------
+-- BIND CHARACTER LOCAL
+--------------------------------------------------------------------------------
+
 local function bindCharacter(character)
-	-- print("🔍 [Camera] Binding character:", character and character.Name or "nil")
 	currentCharacter = character
-	if currentCharacter then
-		-- Wait for character to be fully parented
-		local maxWait = 5
-		local elapsed = 0
-		while not currentCharacter.Parent and elapsed < maxWait do
-			task.wait(0.1)
-			elapsed = elapsed + 0.1
-		end
-
-		if not currentCharacter.Parent then
-			print("🔍 [Camera] Character was destroyed before bind completed")
-			humanoidRootPart = nil
-			return
-		end
-
-		-- Retry loop for HumanoidRootPart
-		local attempts = 0
-		humanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
-		while not humanoidRootPart and attempts < 50 and currentCharacter.Parent do
-			task.wait(0.1)
-			attempts = attempts + 1
-			humanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
-		end
-
-		if not humanoidRootPart then
-			warn(
-				"⚠️ Camera bind skipped: missing HumanoidRootPart in",
-				currentCharacter.Name,
-				"after",
-				attempts * 0.1,
-				"seconds"
-			)
-			print(
-				"🔍 [Camera] Character children:",
-				table.concat(
-					(function()
-						local names = {}
-						for _, child in ipairs(currentCharacter:GetChildren()) do
-							table.insert(names, child.Name)
-						end
-						return names
-					end)(),
-					", "
-				)
-			)
-		else
-			print("🔍 [Camera] Successfully bound to", currentCharacter.Name)
-		end
-	else
+	if not currentCharacter then
 		humanoidRootPart = nil
+		return
+	end
+
+	-- Esperar a que el character esté en workspace
+	local maxWait = 5
+	local elapsed = 0
+	while not currentCharacter.Parent and elapsed < maxWait do
+		task.wait(0.1)
+		elapsed = elapsed + 0.1
+	end
+
+	if not currentCharacter.Parent then
+		humanoidRootPart = nil
+		return
+	end
+
+	-- Buscar HumanoidRootPart con retry
+	local attempts = 0
+	humanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
+	while not humanoidRootPart and attempts < 50 and currentCharacter.Parent do
+		task.wait(0.1)
+		attempts = attempts + 1
+		humanoidRootPart = currentCharacter:FindFirstChild("HumanoidRootPart")
+	end
+
+	if not humanoidRootPart then
+		warn("⚠️ Camera bind skipped: missing HumanoidRootPart in", currentCharacter.Name)
 	end
 end
 
+-- Conectar eventos de character
 bindCharacter(player.Character or player.CharacterAdded:Wait())
 
 player.CharacterAdded:Connect(function(character)
 	bindCharacter(character)
 end)
 
--- Also detect manual Character assignment (skin swaps)
 player:GetPropertyChangedSignal("Character"):Connect(function()
 	local character = player.Character
 	if character then
@@ -107,127 +144,264 @@ player:GetPropertyChangedSignal("Character"):Connect(function()
 	end
 end)
 
--- Busca el oponente (dummy o jugador) para calcular punto medio
-local function findOpponent()
-	if opponent and opponentRoot and opponentRoot.Parent then
-		return opponent, opponentRoot
+--------------------------------------------------------------------------------
+-- GESTIÓN DE TARGETS (MULTIJUGADOR)
+--------------------------------------------------------------------------------
+
+-- Obtiene todos los targets activos (filtrados por validez)
+local function getActiveTargets()
+	local activeTargets = {}
+
+	-- Siempre incluir el jugador local si es válido
+	if currentCharacter and isValidTarget(currentCharacter) then
+		table.insert(activeTargets, currentCharacter)
 	end
 
-	local dummy = workspace:FindFirstChild("Enemy") or workspace:FindFirstChild("TrainingDummy")
-	if dummy and dummy:FindFirstChild("HumanoidRootPart") then
-		return dummy, dummy.HumanoidRootPart
+	-- Incluir targets registrados manualmente
+	for _, target in ipairs(targets) do
+		if isValidTarget(target) and target ~= currentCharacter then
+			table.insert(activeTargets, target)
+		end
 	end
 
-	for _, otherPlayer in pairs(Players:GetPlayers()) do
+	return activeTargets
+end
+
+-- Auto-descubre targets (otros jugadores y dummies)
+local function discoverTargets()
+	local discovered = {}
+
+	-- Buscar dummies en workspace
+	for _, name in ipairs({ "Enemy", "TrainingDummy", "Dummy" }) do
+		local dummy = workspace:FindFirstChild(name)
+		if dummy and isValidTarget(dummy) then
+			table.insert(discovered, dummy)
+		end
+	end
+
+	-- Buscar otros jugadores
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
 		if otherPlayer ~= player and otherPlayer.Character then
-			local otherRoot = otherPlayer.Character:FindFirstChild("HumanoidRootPart")
-			if otherRoot then
-				return otherPlayer.Character, otherRoot
+			if isValidTarget(otherPlayer.Character) then
+				table.insert(discovered, otherPlayer.Character)
 			end
 		end
 	end
 
-	return nil, nil
+	return discovered
 end
 
--- Calcula el punto medio entre ambos jugadores en X
-local function getCenterPoint()
-	if not humanoidRootPart or not humanoidRootPart.Parent then
+--------------------------------------------------------------------------------
+-- CÁLCULOS DE CÁMARA MULTIJUGADOR
+--------------------------------------------------------------------------------
+
+-- Calcula el centro de masa de todos los targets activos
+local function getCenterOfMass(activeTargets)
+	if #activeTargets == 0 then
 		return nil
 	end
 
-	local playerPos = humanoidRootPart.Position
+	local sumX, sumY, sumZ = 0, 0, 0
+	local count = 0
 
-	if opponentRoot and opponentRoot.Parent then
-		local opponentPos = opponentRoot.Position
-		return Vector3.new(
-			(playerPos.X + opponentPos.X) / 2,
-			(playerPos.Y + opponentPos.Y) / 2,
-			(playerPos.Z + opponentPos.Z) / 2
-		)
+	for _, target in ipairs(activeTargets) do
+		local pos = getTargetPosition(target)
+		if pos then
+			sumX = sumX + pos.X
+			sumY = sumY + pos.Y
+			sumZ = sumZ + pos.Z
+			count = count + 1
+		end
 	end
 
-	return playerPos
+	if count == 0 then
+		return nil
+	end
+
+	return Vector3.new(sumX / count, sumY / count, sumZ / count)
 end
 
--- Calcula zoom dinámico basado en distancia entre jugadores
-local function calculateZoom()
+-- Calcula el bounding box de todos los targets (para zoom dinámico)
+local function getBoundingBox(activeTargets)
+	if #activeTargets == 0 then
+		return nil, nil
+	end
+
+	local minX, maxX = math.huge, -math.huge
+	local minY, maxY = math.huge, -math.huge
+
+	for _, target in ipairs(activeTargets) do
+		local pos = getTargetPosition(target)
+		if pos then
+			minX = math.min(minX, pos.X)
+			maxX = math.max(maxX, pos.X)
+			minY = math.min(minY, pos.Y)
+			maxY = math.max(maxY, pos.Y)
+		end
+	end
+
+	if minX == math.huge then
+		return nil, nil
+	end
+
+	return Vector3.new(minX, minY, 0), Vector3.new(maxX, maxY, 0)
+end
+
+-- Calcula zoom dinámico basado en el bounding box
+local function calculateZoom(activeTargets)
 	if not CAMERA.zoomEnabled then
 		return CAMERA.baseDistance
 	end
 
-	if not humanoidRootPart or not humanoidRootPart.Parent then
-		return CAMERA.baseDistance
-	end
-
-	if not opponentRoot or not opponentRoot.Parent then
+	if #activeTargets <= 1 then
 		return CAMERA.minZoom
 	end
 
-	local playerPos = humanoidRootPart.Position
-	local opponentPos = opponentRoot.Position
-	local distance = math.abs(playerPos.X - opponentPos.X)
+	local minBound, maxBound = getBoundingBox(activeTargets)
+	if not minBound or not maxBound then
+		return CAMERA.minZoom
+	end
 
-	local minSeparation = 5
-	local maxSeparation = 30
+	-- La distancia relevante es el span horizontal (X) principalmente
+	-- pero también consideramos altura (Y) para saltos
+	local spanX = maxBound.X - minBound.X
+	local spanY = maxBound.Y - minBound.Y
 
-	distance = math.clamp(distance, minSeparation, maxSeparation)
-	local normalized = (distance - minSeparation) / (maxSeparation - minSeparation)
+	-- Usar el span mayor como referencia
+	local maxSpan = math.max(spanX, spanY * 0.5) -- Y pesa menos
 
+	-- Normalizar al rango de separación
+	maxSpan = math.clamp(maxSpan, CAMERA.minSeparation, CAMERA.maxSeparation)
+	local normalized = (maxSpan - CAMERA.minSeparation) / (CAMERA.maxSeparation - CAMERA.minSeparation)
+
+	-- Interpolar entre minZoom y maxZoom
 	return CAMERA.minZoom + (normalized * (CAMERA.maxZoom - CAMERA.minZoom))
 end
 
--- Actualiza posición y orientación de la cámara cada frame
+--------------------------------------------------------------------------------
+-- UPDATE LOOP
+--------------------------------------------------------------------------------
+
 local function updateCamera(dt)
-	-- Solo actualizar cámara 2D si estamos en modo de juego
+	-- Solo actualizar si estamos en modo de juego
 	if not gameModeActive then
 		return
 	end
 
-	if not humanoidRootPart or not humanoidRootPart.Parent then
+	-- Obtener targets activos (incluye auto-discovery)
+	local activeTargets = getActiveTargets()
+
+	-- Si no hay targets registrados, intentar descubrir
+	if #activeTargets <= 1 then
+		local discovered = discoverTargets()
+		for _, target in ipairs(discovered) do
+			if isValidTarget(target) then
+				table.insert(activeTargets, target)
+			end
+		end
+	end
+
+	-- Si aún no hay suficientes targets, seguir al jugador local
+	if #activeTargets == 0 then
+		if humanoidRootPart and humanoidRootPart.Parent then
+			-- Fallback: seguir solo al jugador
+			local pos = humanoidRootPart.Position
+			local cameraPos = pos + Vector3.new(0, CAMERA.baseHeight, CAMERA.minZoom)
+			local lookAt = pos + Vector3.new(0, CAMERA.lookAtOffset, 0)
+			camera.CFrame = CFrame.lookAt(cameraPos, lookAt)
+		end
 		return
 	end
 
-	if not opponent or not opponentRoot or not opponentRoot.Parent then
-		opponent, opponentRoot = findOpponent()
-	end
-
-	local centerPoint = getCenterPoint()
-	if not centerPoint then
+	-- Calcular centro de masa
+	local centerOfMass = getCenterOfMass(activeTargets)
+	if not centerOfMass then
 		return
 	end
 
-	local targetZoom = calculateZoom()
-	currentZoom = currentZoom + ((targetZoom - currentZoom) * CAMERA.zoomSmooth)
+	-- Calcular zoom basado en bounding box
+	local targetZoom = calculateZoom(activeTargets)
 
-	local lookTarget = Vector3.new(centerPoint.X, centerPoint.Y + CAMERA.lookAtOffset, centerPoint.Z)
+	-- Smooth zoom con deadzone
+	local zoomDelta = targetZoom - currentZoom
+	if math.abs(zoomDelta) > CAMERA.zoomDeadzone then
+		currentZoom = currentZoom + (zoomDelta * CAMERA.zoomSmooth)
+	end
 
+	-- Calcular posición y lookAt target
+	local targetLookAt = Vector3.new(centerOfMass.X, centerOfMass.Y + CAMERA.lookAtOffset, centerOfMass.Z)
 	local cameraOffset = Vector3.new(0, CAMERA.baseHeight, currentZoom)
+	local targetCameraPosition = centerOfMass + cameraOffset
 
-	local cameraPosition = centerPoint + cameraOffset
-	local newCFrame = CFrame.lookAt(cameraPosition, lookTarget)
+	-- Inicializar posición si es primera vez
+	if not initialized then
+		currentCameraPosition = targetCameraPosition
+		currentLookTarget = targetLookAt
+		initialized = true
+	end
 
-	camera.CFrame = camera.CFrame:Lerp(newCFrame, CAMERA.positionSmooth)
+	-- Smooth position con deadzone
+	local posDelta = (targetCameraPosition - currentCameraPosition).Magnitude
+	if posDelta > CAMERA.positionDeadzone then
+		currentCameraPosition = currentCameraPosition:Lerp(targetCameraPosition, CAMERA.positionSmooth)
+		currentLookTarget = currentLookTarget:Lerp(targetLookAt, CAMERA.positionSmooth)
+	end
+
+	-- Aplicar CFrame
+	camera.CFrame = CFrame.lookAt(currentCameraPosition, currentLookTarget)
 end
 
 RunService.RenderStepped:Connect(updateCamera)
 
-task.spawn(function()
-	while task.wait(1) do
-		if not opponent or not opponentRoot or not opponentRoot.Parent then
-			opponent, opponentRoot = findOpponent()
+--------------------------------------------------------------------------------
+-- API PÚBLICA
+--------------------------------------------------------------------------------
+
+-- Agrega un target a la lista (character con HumanoidRootPart)
+function CameraHandler:AddTarget(character)
+	if not character then
+		return false
+	end
+
+	-- Evitar duplicados
+	for _, existing in ipairs(targets) do
+		if existing == character then
+			return true
 		end
 	end
-end)
 
--- Setea el oponente para cálculo de cámara
+	table.insert(targets, character)
+	return true
+end
+
+-- Remueve un target de la lista
+function CameraHandler:RemoveTarget(character)
+	for i, target in ipairs(targets) do
+		if target == character then
+			table.remove(targets, i)
+			return true
+		end
+	end
+	return false
+end
+
+-- Limpia todos los targets
+function CameraHandler:ClearTargets()
+	targets = {}
+end
+
+-- Retorna la lista de targets activos
+function CameraHandler:GetTargets()
+	return getActiveTargets()
+end
+
+-- Setea el oponente (legacy, ahora usa AddTarget internamente)
 function CameraHandler:SetOpponent(opponentCharacter)
 	if opponentCharacter and opponentCharacter:FindFirstChild("HumanoidRootPart") then
-		opponent = opponentCharacter
-		opponentRoot = opponentCharacter.HumanoidRootPart
-		return true
+		-- Limpiar targets anteriores y agregar este
+		self:ClearTargets()
+		return self:AddTarget(opponentCharacter)
 	end
-
 	warn("📹 Invalid opponent character for camera")
 	return false
 end
@@ -248,26 +422,42 @@ function CameraHandler:SetDynamicZoom(enabled)
 	CAMERA.zoomEnabled = enabled
 end
 
--- Restaura la cámara al modo por defecto de Roblox
+-- Configura límites de zoom
+function CameraHandler:SetZoomLimits(minZoom, maxZoom)
+	CAMERA.minZoom = minZoom or CAMERA.minZoom
+	CAMERA.maxZoom = maxZoom or CAMERA.maxZoom
+end
+
+-- Configura smoothing
+function CameraHandler:SetSmoothing(positionSmooth, zoomSmooth)
+	CAMERA.positionSmooth = positionSmooth or CAMERA.positionSmooth
+	CAMERA.zoomSmooth = zoomSmooth or CAMERA.zoomSmooth
+end
+
+-- Restaura la cámara al modo por defecto
 function CameraHandler:Reset()
-	CAMERA.baseDistance = 12
-	CAMERA.baseHeight = 1.5
+	CAMERA.baseDistance = 14
+	CAMERA.baseHeight = 2
 	CAMERA.lookAtOffset = 3
 	CAMERA.zoomEnabled = true
+	CAMERA.minZoom = 12
+	CAMERA.maxZoom = 28
+	CAMERA.positionSmooth = 0.12
+	CAMERA.zoomSmooth = 0.08
 	currentZoom = CAMERA.baseDistance
+	targets = {}
+	initialized = false
 end
 
 -- Activa/desactiva el modo de juego (cámara 2D)
 function CameraHandler:SetGameModeActive(active)
 	gameModeActive = active
-	-- print("📹 [Camera] GameMode active:", active)
 
 	if active then
-		-- Activar cámara 2D
 		camera.CameraType = Enum.CameraType.Scriptable
 		UserInputService.MouseDeltaSensitivity = 0
+		initialized = false -- Resetear para smooth transition inicial
 	else
-		-- Restaurar cámara normal de Roblox
 		camera.CameraType = Enum.CameraType.Custom
 		UserInputService.MouseDeltaSensitivity = 1
 	end
@@ -276,6 +466,16 @@ end
 -- Retorna si el modo de juego está activo
 function CameraHandler:IsGameModeActive()
 	return gameModeActive
+end
+
+-- Retorna la configuración actual de cámara (para debug)
+function CameraHandler:GetConfig()
+	return {
+		currentZoom = currentZoom,
+		targetCount = #getActiveTargets(),
+		gameModeActive = gameModeActive,
+		config = CAMERA,
+	}
 end
 
 return CameraHandler

@@ -47,8 +47,10 @@ Ken.Info = {
 	Health = 90,
 	WalkSpeed = 19,
 	Weight = 0.9, -- Ligero: vuela más lejos al ser lanzado, cae un poco más lento
-	GravityScale = 1.0, -- Gravedad normal
+	GravityScale = 0.5, -- Gravedad normal
 	Color = Color3.fromRGB(200, 50, 50), -- Rojo
+	JumpForce = 65, -- Más ligero = salta un poco más alto
+	DoubleJumpForce = 58, -- Doble salto ligeramente menor
 }
 
 -- ============================================

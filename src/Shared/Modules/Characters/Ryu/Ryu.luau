@@ -42,6 +42,8 @@ Ryu.Info = {
 	Weight = 1.0, -- Peso estándar
 	GravityScale = 1.0, -- Gravedad normal
 	Color = Color3.fromRGB(220, 220, 220), -- Color representativo (blanco)
+	JumpForce = 62, -- Fuerza del primer salto (default engine: 50)
+	DoubleJumpForce = 55, -- Fuerza del doble salto (un poco menor)
 }
 
 -- ============================================
@@ -200,6 +202,7 @@ Ryu.Attacks.CrouchHeavy = {
 	VFX = {
 		Startup = "Startup",
 		Active = "Active",
+		ActiveTrail = "ActiveTrail",
 	},
 	VFX_Limb = "RightFoot",
 }
@@ -220,6 +223,9 @@ Ryu.Attacks.AirPunch = {
 	HitAnimation = "AirHurt",
 	AttackHeight = "High",
 	Damage = 8,
+	DashDistance = 4,
+	DashFrameStart = 3,
+	DashDuration = 5,
 	HitstunDuration = 0.2,
 	Pushback = 4,
 	HitstopFrames = 4,

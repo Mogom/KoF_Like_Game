@@ -69,6 +69,9 @@ function CharacterController.new(character, machine, characterName)
 	local walkSpeed = (charInfo and charInfo.WalkSpeed) or 16
 	local weight = (charInfo and charInfo.Weight) or 1.0
 	local gravityScale = (charInfo and charInfo.GravityScale) or 1.0
+	local jumpForce = (charInfo and charInfo.JumpForce) or 62
+	local doubleJumpForce = (charInfo and charInfo.DoubleJumpForce) or 55
+	local doubleJumpAnimation = (charInfo and charInfo.DoubleJumpAnimation) or "Jump"
 
 	local context = {
 		character = character,
@@ -121,7 +124,11 @@ function CharacterController.new(character, machine, characterName)
 		-- Air state
 		isAirborne = false,
 		wasAirborne = false,
-		jumpForce = 50,
+		jumpForce = jumpForce,
+		doubleJumpForce = doubleJumpForce,
+		doubleJumpAnimation = doubleJumpAnimation,
+		canDoubleJump = true, -- Se resetea al aterrizar
+		hasDoubleJumped = false, -- Tracking del doble salto
 		airMoveSpeed = 10,
 		hasAirAttacked = false,
 		isInAirHitstun = false,
@@ -640,6 +647,12 @@ function CharacterController:Jump()
 		or self.context.isInWakeup
 		or self.context.isInBlockstun
 	then
+		return
+	end
+
+	-- Si ya está en el aire, intentar doble salto
+	if self.context.isAirborne then
+		self.motor:DoubleJump()
 		return
 	end
 

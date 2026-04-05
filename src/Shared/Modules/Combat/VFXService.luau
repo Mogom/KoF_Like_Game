@@ -48,14 +48,15 @@ local TweenService = game:GetService("TweenService")
 local VFXService = {}
 
 local CharactersFolder = ReplicatedStorage:WaitForChild("Modules"):WaitForChild("Characters")
+local effectStateCache = setmetatable({}, { __mode = "k" })
 
 -- =============================================
 -- CONFIGURACIÓN DE TIMINGS (AJUSTABLES)
 -- =============================================
 -- Cambia estos valores para ajustar qué tan rápido desaparecen los VFX
 local BURST_THRESHOLD = 0.2 -- Duración mínima para usar modo continuo (vs burst)
-local FADE_OUT_DURATION = 0.01 -- Tiempo del fade out (en segundos) | Reduce para más rápido
-local CLEANUP_DELAY = 0.01 -- Espera antes de destruir clone (en segundos) | Reduce para más rápido
+local FADE_OUT_DURATION = 0.12 -- Tiempo del fade out al terminar Active/Trail
+local CLEANUP_DELAY = 0.04 -- Espera antes de destruir clone después del fade
 local MAX_LINGER_TIME = 0.1 -- Máximo tiempo para que las partículas vivan después de desactivarlas | AUMENTA si quieres que se vean más, REDUCE para limpiarlas rápido
 
 -- =============================================
@@ -188,6 +189,142 @@ local function _activateEmitters(vfxClone)
 	return emitters
 end
 
+local function cloneNumberSequence(sequence)
+	local keypoints = {}
+	for _, keypoint in ipairs(sequence.Keypoints) do
+		table.insert(keypoints, NumberSequenceKeypoint.new(keypoint.Time, keypoint.Value, keypoint.Envelope))
+	end
+	return NumberSequence.new(keypoints)
+end
+
+local function fadeNumberSequenceToInvisible(sequence, alpha)
+	local keypoints = {}
+	for _, keypoint in ipairs(sequence.Keypoints) do
+		local value = keypoint.Value + ((1 - keypoint.Value) * alpha)
+		local envelope = keypoint.Envelope * (1 - alpha)
+		table.insert(keypoints, NumberSequenceKeypoint.new(keypoint.Time, value, envelope))
+	end
+	return NumberSequence.new(keypoints)
+end
+
+local function captureEffectState(effect)
+	local cached = effectStateCache[effect]
+	if cached then
+		return cached
+	end
+
+	local state = {
+		Enabled = effect.Enabled,
+	}
+
+	if effect:IsA("ParticleEmitter") then
+		state.Transparency = cloneNumberSequence(effect.Transparency)
+		state.Rate = effect.Rate
+	elseif effect:IsA("Trail") then
+		state.Transparency = cloneNumberSequence(effect.Transparency)
+		state.Lifetime = effect.Lifetime
+	elseif effect:IsA("Beam") then
+		state.Transparency = cloneNumberSequence(effect.Transparency)
+		state.Brightness = effect.Brightness
+	elseif effect:IsA("PointLight") or effect:IsA("SpotLight") or effect:IsA("SurfaceLight") then
+		state.Brightness = effect.Brightness
+		state.Range = effect.Range
+	end
+
+	effectStateCache[effect] = state
+	return state
+end
+
+local function restoreEffectState(effect)
+	local state = effectStateCache[effect]
+	if not state or not effect or not effect.Parent then
+		return
+	end
+
+	if effect:IsA("ParticleEmitter") then
+		effect.Transparency = state.Transparency
+		effect.Rate = state.Rate
+	elseif effect:IsA("Trail") then
+		effect.Transparency = state.Transparency
+		effect.Lifetime = state.Lifetime
+	elseif effect:IsA("Beam") then
+		effect.Transparency = state.Transparency
+		effect.Brightness = state.Brightness
+	elseif effect:IsA("PointLight") or effect:IsA("SpotLight") or effect:IsA("SurfaceLight") then
+		effect.Brightness = state.Brightness
+		effect.Range = state.Range
+	end
+
+	effect.Enabled = state.Enabled
+end
+
+local function fadeOutEffects(nodes, duration, destroyTarget)
+	if not nodes or #nodes == 0 then
+		if destroyTarget and destroyTarget.Parent then
+			destroyTarget:Destroy()
+		end
+		return
+	end
+
+	for _, node in ipairs(nodes) do
+		if node and node.Parent then
+			captureEffectState(node)
+			if node:IsA("ParticleEmitter") or node:IsA("Trail") or node:IsA("Beam") then
+				node.Enabled = false
+			end
+		end
+	end
+
+	task.spawn(function()
+		local startTime = os.clock()
+		while true do
+			local elapsed = os.clock() - startTime
+			local alpha = math.clamp(elapsed / duration, 0, 1)
+
+			for _, node in ipairs(nodes) do
+				if node and node.Parent then
+					local state = captureEffectState(node)
+					if node:IsA("ParticleEmitter") then
+						node.Transparency = fadeNumberSequenceToInvisible(state.Transparency, alpha)
+						node.Rate = state.Rate * (1 - alpha)
+					elseif node:IsA("Trail") then
+						node.Transparency = fadeNumberSequenceToInvisible(state.Transparency, alpha)
+					elseif node:IsA("Beam") then
+						node.Transparency = fadeNumberSequenceToInvisible(state.Transparency, alpha)
+						node.Brightness = state.Brightness * (1 - alpha)
+					elseif node:IsA("PointLight") or node:IsA("SpotLight") or node:IsA("SurfaceLight") then
+						node.Brightness = state.Brightness * (1 - alpha)
+						node.Range = state.Range * (1 - alpha)
+					end
+				end
+			end
+
+			if alpha >= 1 then
+				break
+			end
+
+			task.wait()
+		end
+
+		if destroyTarget and destroyTarget.Parent then
+			task.delay(CLEANUP_DELAY, function()
+				if destroyTarget and destroyTarget.Parent then
+					destroyTarget:Destroy()
+				end
+			end)
+		else
+			for _, node in ipairs(nodes) do
+				if node and node.Parent then
+					restoreEffectState(node)
+					if node:IsA("ParticleEmitter") or node:IsA("Trail") or node:IsA("Beam") then
+						node.Enabled = false
+					end
+				end
+			end
+		end
+	end)
+end
+
 -- Desactiva emitters, fade out y destruir
 -- lingerTime: tiempo extra para que las partículas ya emitidas terminen su Lifetime (respeta MAX_LINGER_TIME)
 local function _cleanupVFX(vfxClone, emitters, lingerTime)
@@ -225,21 +362,29 @@ local function _cleanupVFX(vfxClone, emitters, lingerTime)
 			return
 		end
 
-		local fadeInfo = TweenInfo.new(FADE_OUT_DURATION, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local nodes = {}
 		for _, desc in pairs(vfxClone:GetDescendants()) do
-			if desc:IsA("BasePart") then
-				TweenService:Create(desc, fadeInfo, { Transparency = 1 }):Play()
+			if desc:IsA("ParticleEmitter") or desc:IsA("Trail") or desc:IsA("Beam") then
+				table.insert(nodes, desc)
+			elseif desc:IsA("PointLight") or desc:IsA("SpotLight") or desc:IsA("SurfaceLight") then
+				table.insert(nodes, desc)
+			elseif desc:IsA("BasePart") then
+				TweenService:Create(
+					desc,
+					TweenInfo.new(FADE_OUT_DURATION, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ Transparency = 1 }
+				):Play()
 			end
 		end
 		if vfxClone:IsA("BasePart") then
-			TweenService:Create(vfxClone, fadeInfo, { Transparency = 1 }):Play()
+			TweenService:Create(
+				vfxClone,
+				TweenInfo.new(FADE_OUT_DURATION, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Transparency = 1 }
+			):Play()
 		end
 
-		task.delay(CLEANUP_DELAY, function()
-			if vfxClone and vfxClone.Parent then
-				vfxClone:Destroy()
-			end
-		end)
+		fadeOutEffects(nodes, FADE_OUT_DURATION, vfxClone)
 	end)
 end
 
@@ -322,13 +467,14 @@ function VFXService.Play(characterName, attackId, vfxName, character, limbName, 
 	else
 		-- CONTINUOUS MODE: Emitir partículas durante toda la duración
 		for _, effect in ipairs(clonedEffects) do
-			if effect:IsA("ParticleEmitter") then
+			if effect:IsA("ParticleEmitter") or effect:IsA("Trail") or effect:IsA("Beam") then
 				effect.Enabled = true
+			elseif effect:IsA("PointLight") or effect:IsA("SpotLight") or effect:IsA("SurfaceLight") then
+				captureEffectState(effect)
 			end
 		end
 
 		task.delay(duration, function()
-			-- Desactivar emisión
 			local lingerTime = 0
 			for _, effect in ipairs(clonedEffects) do
 				if effect and effect.Parent then
@@ -344,12 +490,15 @@ function VFXService.Play(characterName, attackId, vfxName, character, limbName, 
 			end
 			lingerTime = math.min(lingerTime, MAX_LINGER_TIME)
 
-			task.delay(lingerTime + CLEANUP_DELAY, function()
-				for _, effect in ipairs(clonedEffects) do
-					if effect and effect.Parent then
-						effect:Destroy()
+			task.delay(lingerTime, function()
+				fadeOutEffects(clonedEffects, FADE_OUT_DURATION, nil)
+				task.delay(FADE_OUT_DURATION + CLEANUP_DELAY, function()
+					for _, effect in ipairs(clonedEffects) do
+						if effect and effect.Parent then
+							effect:Destroy()
+						end
 					end
-				end
+				end)
 			end)
 		end)
 	end
@@ -411,9 +560,14 @@ local activeTrails = {}
 local function setTrailNodesEnabled(nodes, enabled)
 	for _, node in ipairs(nodes) do
 		if node and node.Parent then
+			if enabled then
+				restoreEffectState(node)
+			end
 			if node:IsA("Trail") then
 				node.Enabled = enabled
 			elseif node:IsA("ParticleEmitter") then
+				node.Enabled = enabled
+			elseif node:IsA("Beam") then
 				node.Enabled = enabled
 			end
 		end
@@ -426,7 +580,7 @@ local function cleanupTrailHandle(handle)
 	end
 
 	if handle.Mode == "PreAttached" then
-		setTrailNodesEnabled(handle.Nodes or {}, false)
+		fadeOutEffects(handle.Nodes or {}, FADE_OUT_DURATION, nil)
 		return
 	end
 
@@ -434,17 +588,13 @@ local function cleanupTrailHandle(handle)
 	if instance and instance.Parent then
 		local nodes = {}
 		for _, desc in pairs(instance:GetDescendants()) do
-			if desc:IsA("Trail") or desc:IsA("ParticleEmitter") then
+			if desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") then
+				table.insert(nodes, desc)
+			elseif desc:IsA("PointLight") or desc:IsA("SpotLight") or desc:IsA("SurfaceLight") then
 				table.insert(nodes, desc)
 			end
 		end
-		setTrailNodesEnabled(nodes, false)
-
-		task.delay(0.3, function()
-			if instance and instance.Parent then
-				instance:Destroy()
-			end
-		end)
+		fadeOutEffects(nodes, FADE_OUT_DURATION, instance)
 	end
 end
 
@@ -509,7 +659,9 @@ function VFXService.EnableTrail(characterName, attackId, character, limbName, fa
 
 		local clonedNodes = {}
 		for _, desc in pairs(vfxClone:GetDescendants()) do
-			if desc:IsA("Trail") or desc:IsA("ParticleEmitter") then
+			if desc:IsA("Trail") or desc:IsA("ParticleEmitter") or desc:IsA("Beam") then
+				table.insert(clonedNodes, desc)
+			elseif desc:IsA("PointLight") or desc:IsA("SpotLight") or desc:IsA("SurfaceLight") then
 				table.insert(clonedNodes, desc)
 			end
 		end

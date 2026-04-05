@@ -34,14 +34,13 @@ local function setCharacterCollisionGroup(character)
 	end)
 end
 
--- Da network ownership del dummy root al jugador para que la posición
--- se sincronice correctamente con el servidor (evita hit rejection por distancia).
-local function giveOwnershipToPlayer(dummy, player)
-	local root = dummy:FindFirstChild("HumanoidRootPart")
-	if root then
-		pcall(function()
-			root:SetNetworkOwner(player)
-		end)
+local function keepDummyServerOwned(dummy)
+	for _, part in ipairs(dummy:GetDescendants()) do
+		if part:IsA("BasePart") and not part.Anchored then
+			pcall(function()
+				part:SetNetworkOwner(nil)
+			end)
+		end
 	end
 end
 
@@ -63,18 +62,8 @@ local function setupDummy(dummy)
 
 	Hurtbox.new(dummy)
 	setCharacterCollisionGroup(dummy)
+	keepDummyServerOwned(dummy)
 	print("🤖 Server dummy hurtbox created for", dummy.Name)
-
-	-- Asignar ownership al primer jugador disponible
-	local firstPlayer = Players:GetPlayers()[1]
-	if firstPlayer then
-		giveOwnershipToPlayer(dummy, firstPlayer)
-	else
-		-- Esperar al primer jugador
-		Players.PlayerAdded:Once(function(player)
-			giveOwnershipToPlayer(dummy, player)
-		end)
-	end
 end
 
 local dummy = workspace:FindFirstChild("Enemy") or workspace:FindFirstChild("TrainingDummy")

@@ -97,11 +97,15 @@ local function resolveMovementFromKeyState()
 	if not isInGameMode() then
 		return
 	end
-	if controller:IsAttackLocked() then
-		return
-	end
 	if controller:IsInHitstun() then
 		return
+	end
+	-- Permitir input durante ataques aéreos si allowAirAttackMovement está activo
+	if controller:IsAttackLocked() then
+		local ctx = controller.context
+		if not (ctx and ctx.isAirborne and ctx.allowAirAttackMovement) then
+			return
+		end
 	end
 
 	local dir = 0
@@ -129,6 +133,40 @@ local function resetKeyState()
 	KeyState.Left = false
 	KeyState.Right = false
 	KeyState.Down = false
+end
+
+local function syncCharacterToReplicatedSpawn(character, controllerInstance)
+	if not character or character ~= player.Character then
+		return
+	end
+
+	local spawnX = character:GetAttribute("ReplicatedSpawnX")
+	local spawnY = character:GetAttribute("ReplicatedSpawnY")
+	local spawnZ = character:GetAttribute("ReplicatedSpawnZ")
+	if typeof(spawnX) ~= "number" or typeof(spawnY) ~= "number" or typeof(spawnZ) ~= "number" then
+		return
+	end
+
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+
+	local facingRight = character:GetAttribute("ReplicatedSpawnFacingRight") == true
+	local rotation = facingRight and math.rad(-90) or math.rad(90)
+	local targetCFrame = CFrame.new(spawnX, spawnY, spawnZ) * CFrame.Angles(0, rotation, 0)
+
+	root.CFrame = targetCFrame
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+
+	if controllerInstance and controllerInstance.context then
+		controllerInstance.context.currentX = spawnX
+		controllerInstance.context.lockedZ = spawnZ
+		controllerInstance.context.currentDirection = facingRight and "R" or "L"
+	end
+
+	print("📍 [Input] Synced local character to replicated spawn:", spawnX, spawnY, spawnZ)
 end
 
 -- ============================================
@@ -164,6 +202,7 @@ local function initializeForCharacter(character)
 	buffer = InputBuffer.new(0.35)
 	machine = StateMachine.new("Idle")
 	controller = CharacterController.new(character, machine, selectedCharacter)
+	syncCharacterToReplicatedSpawn(character, controller)
 
 	-- Comandos del personaje
 	characterCommands = controller.context and controller.context.commands or nil
@@ -179,6 +218,13 @@ local function initializeForCharacter(character)
 
 	-- Actualizar cámara
 	CameraHandler:SetGameModeActive(isInGameMode())
+
+	table.insert(
+		activeConnections,
+		character:GetAttributeChangedSignal("ReplicatedSpawnVersion"):Connect(function()
+			syncCharacterToReplicatedSpawn(character, controller)
+		end)
+	)
 
 	-- print("🎮 [Input] Controller ready for", character.Name, "| GameMode:", player:GetAttribute("GameMode") or "none")
 end
@@ -233,8 +279,13 @@ local function onInputBegan(input, processed)
 		if KeyState.Down then
 			return
 		end
-		if controller:IsAttackLocked() or controller:IsInHitstun() then
-			return
+		-- Permitir doble salto en el aire (CharacterController decide si aplicar)
+		local ctx = controller.context
+		local isAirborne = ctx and ctx.isAirborne
+		if not isAirborne then
+			if controller:IsAttackLocked() or controller:IsInHitstun() then
+				return
+			end
 		end
 		controller:Jump()
 		return

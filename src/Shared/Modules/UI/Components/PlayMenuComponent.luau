@@ -77,19 +77,18 @@ local MODE_BUTTONS = {
 		Color = Color3.fromRGB(119, 21, 21), -- Rojo
 		HoverColor = Color3.fromRGB(240, 50, 50),
 	},
-    {
-        Key = "FreeForAll",
-        Text = "Free For All",
-        Color = Color3.fromHSV(0.525445, 0.700535, 0.733333), -- Verde
-        HoverColor = Color3.fromRGB(63, 214, 214),
-    },
-	-- Ejemplo de cómo agregar más modos:
-	-- {
-	--     Key = "Versus2v2",
-	--     Text = "2 V 2",
-	--     Color = Color3.fromRGB(30, 100, 200),
-	--     HoverColor = Color3.fromRGB(50, 130, 240),
-	-- },
+	{
+		Key = "FreeForAll",
+		Text = "Free For All",
+		Color = Color3.fromHSV(0.525445, 0.700535, 0.733333), -- Cyan
+		HoverColor = Color3.fromRGB(63, 214, 214),
+	},
+	{
+		Key = "JoinLobby",
+		Text = "Join Lobby",
+		Color = Color3.fromRGB(80, 60, 140), -- Púrpura
+		HoverColor = Color3.fromRGB(120, 90, 200),
+	},
 }
 
 -- ============================================
@@ -108,6 +107,8 @@ function PlayMenuComponent.new(parent, props)
 	-- Para agregar: self.callbacks["Versus2v2"] = self.props.onVersus2v2Click
 	self.callbacks = {
 		Versus1v1 = self.props.onVersus1v1Click,
+		FreeForAll = self.props.onFreeForAllClick,
+		JoinLobby = self.props.onJoinLobbyClick,
 	}
 
 	self.onBack = self.props.onBackClick

@@ -42,7 +42,10 @@ function CharacterMotor.new(context, animationController)
 	-- =============================================
 	self.context.isAirborne = false
 	self.context.wasAirborne = false
-	self.context.jumpForce = 50
+	self.context.jumpForce = self.context.jumpForce or 62
+	self.context.doubleJumpForce = self.context.doubleJumpForce or 55
+	self.context.canDoubleJump = self.context.canDoubleJump ~= false
+	self.context.hasDoubleJumped = false
 	self.context.airMoveSpeed = 10
 	self.context.hasAirAttacked = false
 	self.context.isInAirHitstun = false
@@ -73,6 +76,11 @@ function CharacterMotor.new(context, animationController)
 	self.context.dodgeSpeed = 30 -- velocidad del dodge direccional
 	self.context.dodgeDirection = 0 -- dirección del dodge (-1, 0, 1)
 
+	-- =============================================
+	-- ⚙️ CONFIGURACIÓN DE MOVIMIENTO AÉREO
+	-- =============================================
+	self.context.allowAirAttackMovement = true -- Si true: ataques aéreos permiten avance/retroceso
+
 	return self
 end
 
@@ -92,8 +100,12 @@ end
 
 -- Cambia la dirección de movimiento (-1, 0, 1). Bloqueado durante hitstun/attack/knockdown
 function CharacterMotor:SetMoveDirection(dir)
+	local allowAirAttackInput = self.context.isAirborne
+		and self.context.attackLocked
+		and self.context.allowAirAttackMovement
+
 	if
-		self.context.attackLocked
+		(self.context.attackLocked and not allowAirAttackInput)
 		or self.context.isInHitstun
 		or self.context.isKnockedDown
 		or self.context.isInWakeup
@@ -209,6 +221,48 @@ function CharacterMotor:Jump()
 end
 
 -- =============================================
+-- 🦅 DOBLE SALTO
+-- =============================================
+-- Aplica un segundo salto en el aire si aún no se ha usado
+function CharacterMotor:DoubleJump()
+	if not self.context.isAirborne then
+		return false
+	end
+
+	if self.context.hasDoubleJumped then
+		return false
+	end
+
+	if not self.context.canDoubleJump then
+		return false
+	end
+
+	if
+		self.context.isInHitstun
+		or self.context.isKnockedDown
+		or self.context.isInWakeup
+		or self.context.isInBlockstun
+		or self.context.attackLocked
+	then
+		return false
+	end
+
+	self.context.hasDoubleJumped = true
+	self.context.hasAirAttacked = false -- Resetear ataque aéreo para permitir otro tras doble salto
+
+	local root = self.context.root
+	local currentVel = root.AssemblyLinearVelocity
+	root.AssemblyLinearVelocity = Vector3.new(currentVel.X, self.context.doubleJumpForce, currentVel.Z)
+
+	local doubleJumpAnim = self.context.doubleJumpAnimation or "Jump"
+	if self.animationController then
+		self.animationController:PlayAnimation(doubleJumpAnim, 0.08)
+	end
+
+	return true
+end
+
+-- =============================================
 -- 🦅 DETECTAR ESTADO AÉREO
 -- =============================================
 -- Detecta transiciones suelo↔aire y maneja landing recovery
@@ -237,6 +291,7 @@ function CharacterMotor:UpdateAirState()
 		self.context.hasAirAttacked = false
 		self.context.isInAirHitstun = false
 		self.context.juggleCount = 0
+		self.context.hasDoubleJumped = false -- Resetear doble salto al aterrizar
 
 		if self.context.isKnockedDown then
 			return
@@ -447,10 +502,23 @@ function CharacterMotor:UpdateWalkMovement(dt)
 
 	-- En el aire: movimiento horizontal limitado
 	if self.context.isAirborne then
-		if not self.context.attackLocked and not self.context.isInHitstun then
-			local airDelta = self.context.moveDirection * self.context.airMoveSpeed * dt
-			self:MoveCurrentX(airDelta)
+		-- ❌ NO avanzar si está en hitstun mientras salta
+		if self.context.isInHitstun or self.context.isInAirHitstun then
+			self.context.moveDirection = 0
+			return
 		end
+
+		-- 🎯 Si ataca en el aire y allowAirAttackMovement = true, permitir movimiento
+		if self.context.attackLocked then
+			if not self.context.allowAirAttackMovement then
+				self.context.moveDirection = 0
+				return
+			end
+			-- Si allowAirAttackMovement = true, permitir avance/retroceso durante ataque aéreo
+		end
+
+		local airDelta = self.context.moveDirection * self.context.airMoveSpeed * dt
+		self:MoveCurrentX(airDelta)
 		return
 	end
 

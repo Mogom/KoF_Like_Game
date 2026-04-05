@@ -37,6 +37,18 @@ local UIBuilder = require(UI:WaitForChild("UIBuilder"))
 local GameHUDComponent = {}
 GameHUDComponent.__index = GameHUDComponent
 
+local function formatStocks(stocks, maxStocks)
+	stocks = math.max(0, stocks or 0)
+	maxStocks = math.max(stocks, maxStocks or 0)
+	if maxStocks == 0 then
+		return ""
+	end
+
+	local alive = string.rep("●", stocks)
+	local lost = string.rep("○", math.max(0, maxStocks - stocks))
+	return alive .. lost
+end
+
 -- ============================================
 -- 🎨 CONFIGURACIÓN VISUAL (editar aquí)
 -- ============================================
@@ -94,18 +106,24 @@ function GameHUDComponent.new(parent, player)
 	self.character = player.Character or player.CharacterAdded:Wait()
 	self.humanoid = self.character:WaitForChild("Humanoid")
 	self.element = nil
+	self.opponentCharacter = nil
+	self.playerStockConnections = {}
+	self.opponentStockConnections = {}
+	self.characterAddedConnection = nil
 
 	-- Referencias a elementos de P1
 	self.p1HealthFill = nil
 	self.p1GhostFill = nil
 	self.p1HealthText = nil
 	self.p1NameLabel = nil
+	self.p1StocksText = nil
 
 	-- Referencias a elementos de P2
 	self.p2HealthFill = nil
 	self.p2GhostFill = nil
 	self.p2HealthText = nil
 	self.p2NameLabel = nil
+	self.p2StocksText = nil
 
 	-- Combo
 	self.comboContainer = nil
@@ -121,7 +139,7 @@ function GameHUDComponent.new(parent, player)
 
 	local success, err = pcall(function()
 		self:render(parent)
-		self:_setupPlayerHealth()
+		self:_setupPlayerStocks()
 		self:_setupOpponentHealth()
 	end)
 
@@ -151,7 +169,7 @@ function GameHUDComponent:render(parent)
 	-- ============================================
 	-- TOP BAR (contenedor superior para barras de vida + timer)
 	-- ============================================
-	local topBar = UIBuilder.Frame({
+	local _topBar = UIBuilder.Frame({
 		Name = "TopBar",
 		Position = UDim2.new(0.5, 0, 0, 0),
 		Size = UDim2.new(1, 0, 0, 90),
@@ -243,6 +261,20 @@ function GameHUDComponent:render(parent)
 		Parent = screenGui,
 	})
 
+	self.p1StocksText = UIBuilder.TextLabel({
+		Name = "P1Stocks",
+		Position = UDim2.new(0, 15, 0, PORTRAIT_SIZE + 36),
+		Size = UDim2.new(0, 220, 0, 24),
+		AnchorPoint = Vector2.new(0, 0),
+		BackgroundTransparency = 1,
+		Text = "●●●",
+		TextColor3 = Color3.fromRGB(255, 240, 120),
+		TextSize = 20,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = screenGui,
+	})
+
 	-- ============================================
 	-- P2 HEALTH BAR (derecha, crece hacia la derecha desde el centro)
 	-- ============================================
@@ -276,6 +308,20 @@ function GameHUDComponent:render(parent)
 		Text = "OPPONENT",
 		TextColor3 = NAME_COLOR,
 		TextSize = NAME_TEXT_SIZE,
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Parent = screenGui,
+	})
+
+	self.p2StocksText = UIBuilder.TextLabel({
+		Name = "P2Stocks",
+		Position = UDim2.new(1, -15, 0, PORTRAIT_SIZE + 36),
+		Size = UDim2.new(0, 220, 0, 24),
+		AnchorPoint = Vector2.new(1, 0),
+		BackgroundTransparency = 1,
+		Text = "●●●",
+		TextColor3 = Color3.fromRGB(255, 240, 120),
+		TextSize = 20,
 		Font = Enum.Font.GothamBold,
 		TextXAlignment = Enum.TextXAlignment.Right,
 		Parent = screenGui,
@@ -336,6 +382,7 @@ function GameHUDComponent:_createHealthBar(props)
 		Size = UDim2.new(0, HEALTH_BAR_WIDTH, 0, HEALTH_BAR_HEIGHT),
 		AnchorPoint = props.anchorPoint,
 		BackgroundColor3 = HEALTH_BG_COLOR,
+		Visible = false,
 		BorderSizePixel = 0,
 		Parent = props.parent,
 		Children = {
@@ -528,19 +575,109 @@ function GameHUDComponent:_bindOpponentHumanoid(humanoid, name)
 	end
 
 	self.opponentHumanoid = humanoid
+	self.opponentCharacter = humanoid.Parent
 
 	-- Actualizar nombre
 	if self.p2NameLabel then
 		self.p2NameLabel.Text = string.upper(name)
 	end
 
-	-- Conectar HealthChanged
-	self.opponentConnection = humanoid.HealthChanged:Connect(function(health)
-		self:updateOpponentHealth(health)
-	end)
+	self:_bindOpponentStocks(self.opponentCharacter)
+end
 
-	-- Actualizar inmediatamente
-	self:updateOpponentHealth(humanoid.Health)
+function GameHUDComponent:_disconnectConnections(connectionList)
+	for _, connection in ipairs(connectionList) do
+		if connection and connection.Connected then
+			connection:Disconnect()
+		end
+	end
+	table.clear(connectionList)
+end
+
+function GameHUDComponent:_bindPlayerStocks(character)
+	if not character then
+		return
+	end
+
+	self.character = character
+	self.humanoid = character:FindFirstChildOfClass("Humanoid")
+
+	self:_disconnectConnections(self.playerStockConnections)
+
+	local function update()
+		if not self.p1StocksText then
+			return
+		end
+		local stocks = character:GetAttribute("Stocks")
+		local maxStocks = character:GetAttribute("MaxStocks")
+		if typeof(stocks) ~= "number" then
+			stocks = self.player:GetAttribute("Stocks")
+		end
+		if typeof(maxStocks) ~= "number" then
+			maxStocks = self.player:GetAttribute("MaxStocks")
+		end
+		stocks = typeof(stocks) == "number" and stocks or 0
+		maxStocks = typeof(maxStocks) == "number" and maxStocks or math.max(3, stocks)
+		self.p1StocksText.Text = formatStocks(stocks, maxStocks)
+	end
+
+	table.insert(self.playerStockConnections, character:GetAttributeChangedSignal("Stocks"):Connect(update))
+	table.insert(self.playerStockConnections, character:GetAttributeChangedSignal("MaxStocks"):Connect(update))
+	table.insert(self.playerStockConnections, self.player:GetAttributeChangedSignal("Stocks"):Connect(update))
+	table.insert(self.playerStockConnections, self.player:GetAttributeChangedSignal("MaxStocks"):Connect(update))
+
+	update()
+end
+
+function GameHUDComponent:_bindOpponentStocks(character)
+	self:_disconnectConnections(self.opponentStockConnections)
+	if not character then
+		if self.p2StocksText then
+			self.p2StocksText.Text = ""
+		end
+		return
+	end
+
+	local ownerPlayer = Players:GetPlayerFromCharacter(character)
+
+	local function update()
+		if not self.p2StocksText then
+			return
+		end
+		local stocks = character:GetAttribute("Stocks")
+		local maxStocks = character:GetAttribute("MaxStocks")
+		if ownerPlayer then
+			if typeof(stocks) ~= "number" then
+				stocks = ownerPlayer:GetAttribute("Stocks")
+			end
+			if typeof(maxStocks) ~= "number" then
+				maxStocks = ownerPlayer:GetAttribute("MaxStocks")
+			end
+		end
+		stocks = typeof(stocks) == "number" and stocks or 0
+		maxStocks = typeof(maxStocks) == "number" and maxStocks or math.max(3, stocks)
+		self.p2StocksText.Text = formatStocks(stocks, maxStocks)
+	end
+
+	table.insert(self.opponentStockConnections, character:GetAttributeChangedSignal("Stocks"):Connect(update))
+	table.insert(self.opponentStockConnections, character:GetAttributeChangedSignal("MaxStocks"):Connect(update))
+	if ownerPlayer then
+		table.insert(self.opponentStockConnections, ownerPlayer:GetAttributeChangedSignal("Stocks"):Connect(update))
+		table.insert(self.opponentStockConnections, ownerPlayer:GetAttributeChangedSignal("MaxStocks"):Connect(update))
+	end
+
+	update()
+end
+
+function GameHUDComponent:_setupPlayerStocks()
+	self:_bindPlayerStocks(self.player.Character or self.character)
+	self.characterAddedConnection = self.player.CharacterAdded:Connect(function(character)
+		task.defer(function()
+			if character and character.Parent then
+				self:_bindPlayerStocks(character)
+			end
+		end)
+	end)
 end
 
 -- ============================================
@@ -688,6 +825,14 @@ end
 
 -- Destruye toda la UI del HUD y desconecta listeners
 function GameHUDComponent:destroy()
+	if self.characterAddedConnection then
+		self.characterAddedConnection:Disconnect()
+		self.characterAddedConnection = nil
+	end
+
+	self:_disconnectConnections(self.playerStockConnections)
+	self:_disconnectConnections(self.opponentStockConnections)
+
 	if self.opponentConnection then
 		self.opponentConnection:Disconnect()
 		self.opponentConnection = nil

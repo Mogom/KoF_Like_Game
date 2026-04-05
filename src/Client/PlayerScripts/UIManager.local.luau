@@ -42,12 +42,46 @@ local GameHUDComponent = require(Components:WaitForChild("GameHUDComponent"))
 local PlayMenuComponent = require(Components:WaitForChild("PlayMenuComponent"))
 local PlaceholderScreen = require(Components:WaitForChild("PlaceholderScreen"))
 local CharacterSelectComponent = require(Components:WaitForChild("CharacterSelectComponent"))
+local LobbyComponent = require(Components:WaitForChild("LobbyComponent"))
+local LobbyListComponent = require(Components:WaitForChild("LobbyListComponent"))
 
 -- Remote Events
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local RemoteEvents = Remotes:WaitForChild("Events")
 local StartTrainingEvent = RemoteEvents:WaitForChild("StartTraining")
 local StartVersusEvent = RemoteEvents:WaitForChild("StartVersus")
+
+-- Crear evento FreeForAll si no existe
+local StartFFAEvent = RemoteEvents:FindFirstChild("StartFreeForAll")
+if not StartFFAEvent then
+	StartFFAEvent = Instance.new("RemoteEvent")
+	StartFFAEvent.Name = "StartFreeForAll"
+	StartFFAEvent.Parent = RemoteEvents
+end
+
+-- Eventos de Lobby
+local CreateLobbyEvent = RemoteEvents:FindFirstChild("CreateLobby")
+if not CreateLobbyEvent then
+	CreateLobbyEvent = Instance.new("RemoteEvent")
+	CreateLobbyEvent.Name = "CreateLobby"
+	CreateLobbyEvent.Parent = RemoteEvents
+end
+
+local JoinLobbyEvent = RemoteEvents:FindFirstChild("JoinLobby")
+if not JoinLobbyEvent then
+	JoinLobbyEvent = Instance.new("RemoteEvent")
+	JoinLobbyEvent.Name = "JoinLobby"
+	JoinLobbyEvent.Parent = RemoteEvents
+end
+
+local GetLobbiesFunction = Remotes:FindFirstChild("Functions") and Remotes.Functions:FindFirstChild("GetLobbies")
+if not GetLobbiesFunction then
+	local Functions = Remotes:FindFirstChild("Functions") or Instance.new("Folder", Remotes)
+	Functions.Name = "Functions"
+	GetLobbiesFunction = Instance.new("RemoteFunction")
+	GetLobbiesFunction.Name = "GetLobbies"
+	GetLobbiesFunction.Parent = Functions
+end
 
 print("✅ Modules loaded")
 
@@ -112,6 +146,9 @@ end
 -- CALLBACK: Play → abre pantalla de selección de modo
 -- ============================================
 
+-- Forward declaration
+local onJoinLobbyClick
+
 local function onPlayClick()
 	if not mainMenu then
 		return
@@ -127,6 +164,24 @@ local function onPlayClick()
 				task.wait(0.5)
 				currentHUD = GameHUDComponent.new(playerGui, player)
 			end, returnToMainMenu)
+		end,
+
+		-- Al pulsar Free For All → selección de personaje → buscar partida FFA
+		onFreeForAllClick = function()
+			destroyCurrentScreen()
+			showCharacterSelect(function(characterName)
+				StartFFAEvent:FireServer(characterName)
+				task.wait(0.5)
+				currentHUD = GameHUDComponent.new(playerGui, player)
+			end, returnToMainMenu)
+		end,
+
+		-- Al pulsar Join Lobby → mostrar lista de lobbies
+		onJoinLobbyClick = function()
+			destroyCurrentScreen()
+			if onJoinLobbyClick then
+				onJoinLobbyClick()
+			end
 		end,
 
 		-- Al pulsar Volver → regresar al menú principal
@@ -152,7 +207,7 @@ local function onTrainingClick()
 end
 
 -- ============================================
--- CALLBACK: Create Sala → placeholder screen
+-- CALLBACK: Create Sala → muestra LobbyComponent para crear lobby
 -- ============================================
 
 local function onCreateSalaClick()
@@ -161,9 +216,78 @@ local function onCreateSalaClick()
 	end
 	mainMenu:hide()
 
-	currentScreen = PlaceholderScreen.new(playerGui, {
-		title = "CREATE SALA",
+	-- Crear lobby en el servidor
+	CreateLobbyEvent:FireServer("1v1") -- Modo por defecto
+
+	-- Mostrar componente de lobby
+	currentScreen = LobbyComponent.new(playerGui, {
+		isHost = true,
+		onBackClick = function()
+			destroyCurrentScreen()
+			returnToMainMenu()
+		end,
+		onStartGame = function()
+			-- El servidor manejará el inicio del juego
+			destroyCurrentScreen()
+			task.wait(0.5)
+			currentHUD = GameHUDComponent.new(playerGui, player)
+		end,
+	})
+end
+
+-- ============================================
+-- CALLBACK: Join Lobby → muestra lista de lobbies disponibles
+-- ============================================
+
+onJoinLobbyClick = function()
+	if not mainMenu then
+		return
+	end
+	mainMenu:hide()
+	destroyCurrentScreen()
+
+	-- Obtener lobbies del servidor
+	local lobbies = {}
+	local success = pcall(function()
+		lobbies = GetLobbiesFunction:InvokeServer() or {}
+	end)
+
+	if not success then
+		lobbies = {}
+	end
+
+	currentScreen = LobbyListComponent.new(playerGui, {
+		lobbies = lobbies,
 		onBackClick = returnToMainMenu,
+		onJoinLobby = function(lobbyId)
+			-- Unirse al lobby
+			JoinLobbyEvent:FireServer(lobbyId)
+			destroyCurrentScreen()
+
+			-- Mostrar pantalla de lobby (como miembro, no host)
+			currentScreen = LobbyComponent.new(playerGui, {
+				isHost = false,
+				onBackClick = function()
+					destroyCurrentScreen()
+					returnToMainMenu()
+				end,
+				onStartGame = function()
+					destroyCurrentScreen()
+					task.wait(0.5)
+					currentHUD = GameHUDComponent.new(playerGui, player)
+				end,
+			})
+		end,
+		onRefresh = function()
+			-- Refrescar lista de lobbies
+			local updatedLobbies = {}
+			pcall(function()
+				updatedLobbies = GetLobbiesFunction:InvokeServer() or {}
+			end)
+			if currentScreen and currentScreen.updateLobbies then
+				currentScreen:updateLobbies(updatedLobbies)
+			end
+		end,
 	})
 end
 

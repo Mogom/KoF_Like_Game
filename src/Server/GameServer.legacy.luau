@@ -27,6 +27,10 @@ local StartVersusEvent = Instance.new("RemoteEvent")
 StartVersusEvent.Name = "StartVersus"
 StartVersusEvent.Parent = RemoteEvents
 
+local StartFFAEvent = Instance.new("RemoteEvent")
+StartFFAEvent.Name = "StartFreeForAll"
+StartFFAEvent.Parent = RemoteEvents
+
 -- Evento de replicación de animaciones
 local ReplicateAnimationEvent = RemoteEvents:WaitForChild("ReplicateAnimation")
 
@@ -59,17 +63,39 @@ StartVersusEvent.OnServerEvent:Connect(function(player, selectedCharacter)
 	GameModeManager.StartVersus1v1Mode(player)
 end)
 
+StartFFAEvent.OnServerEvent:Connect(function(player, selectedCharacter, targetPlayers)
+	if typeof(selectedCharacter) == "string" and selectedCharacter ~= "" then
+		player:SetAttribute("SelectedCharacter", selectedCharacter)
+	end
+	-- targetPlayers es opcional, default será el máximo
+	local target = tonumber(targetPlayers) or nil
+	GameModeManager.StartFreeForAllMode(player, target)
+end)
+
 -- ============================================
 -- 🎬 REPLICAR ANIMACIONES
 -- ============================================
 
 ReplicateAnimationEvent.OnServerEvent:Connect(function(player, animationName)
-	-- Obtener oponente
-	local opponent = GameModeManager.GetOpponent(player)
+	-- Obtener oponente(s) según el modo
+	local opponents = GameModeManager.GetOpponents(player)
 
-	if opponent then
-		-- Enviar animación al oponente
-		ReplicateAnimationEvent:FireClient(opponent, player.Character, animationName)
+	for _, opponent in ipairs(opponents) do
+		if opponent and opponent.Parent then
+			-- Obtener Player del oponente
+			local opponentPlayer = Players:GetPlayerFromCharacter(opponent)
+			if opponentPlayer then
+				ReplicateAnimationEvent:FireClient(opponentPlayer, player.Character, animationName)
+			end
+		end
+	end
+
+	-- Fallback para 1v1 legacy
+	if #opponents == 0 then
+		local opponent = GameModeManager.GetOpponent(player)
+		if opponent then
+			ReplicateAnimationEvent:FireClient(opponent, player.Character, animationName)
+		end
 	end
 end)
 
@@ -78,11 +104,24 @@ end)
 -- ============================================
 
 SyncAttackEvent.OnServerEvent:Connect(function(player, attackData)
-	local opponent = GameModeManager.GetOpponent(player)
+	-- Obtener oponente(s) según el modo
+	local opponents = GameModeManager.GetOpponents(player)
 
-	if opponent then
-		-- Replicar ataque al oponente
-		SyncAttackEvent:FireClient(opponent, player.Character, attackData)
+	for _, opponent in ipairs(opponents) do
+		if opponent and opponent.Parent then
+			local opponentPlayer = Players:GetPlayerFromCharacter(opponent)
+			if opponentPlayer then
+				SyncAttackEvent:FireClient(opponentPlayer, player.Character, attackData)
+			end
+		end
+	end
+
+	-- Fallback para 1v1 legacy
+	if #opponents == 0 then
+		local opponent = GameModeManager.GetOpponent(player)
+		if opponent then
+			SyncAttackEvent:FireClient(opponent, player.Character, attackData)
+		end
 	end
 end)
 

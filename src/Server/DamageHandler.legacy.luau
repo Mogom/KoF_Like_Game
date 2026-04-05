@@ -88,6 +88,10 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 		return
 	end
 
+	if victimCharacter:GetAttribute("IsRespawnInvulnerable") == true then
+		return
+	end
+
 	victimHumanoid:TakeDamage(damage)
 
 	local currentHitCounter = victimCharacter:GetAttribute("HitCounter") or 0

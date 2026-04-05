@@ -16,6 +16,19 @@ local VFXService = require(Combat:WaitForChild("VFXService"))
 local DummyController = {}
 DummyController.__index = DummyController
 
+local function getReplicatedSpawnCFrame(character)
+	local spawnX = character:GetAttribute("ReplicatedSpawnX")
+	local spawnY = character:GetAttribute("ReplicatedSpawnY")
+	local spawnZ = character:GetAttribute("ReplicatedSpawnZ")
+	if typeof(spawnX) ~= "number" or typeof(spawnY) ~= "number" or typeof(spawnZ) ~= "number" then
+		return nil
+	end
+
+	local facingRight = character:GetAttribute("ReplicatedSpawnFacingRight") == true
+	local rotation = facingRight and math.rad(-90) or math.rad(90)
+	return CFrame.new(spawnX, spawnY, spawnZ) * CFrame.Angles(0, rotation, 0)
+end
+
 -- Constructor: inicializa dummy con posición, animaciones y listeners
 -- characterName (opcional): personaje del dummy (para cargar sus animaciones)
 function DummyController.new(character, characterName)
@@ -28,6 +41,7 @@ function DummyController.new(character, characterName)
 	self.initialPosition = self.root.Position
 	self.currentX = self.root.Position.X
 	self.lockedZ = self.root.Position.Z
+	self.spawnSyncConnections = {}
 
 	-- Encontrar la posición real del suelo con raycast hacia abajo
 	local rayOrigin = self.root.Position
@@ -116,6 +130,30 @@ function DummyController.new(character, characterName)
 
 	self.pushVelocityX = 0
 	self.pushDecay = 0
+
+	function self:ApplyReplicatedSpawn()
+		local targetCFrame = getReplicatedSpawnCFrame(self.character)
+		if not targetCFrame then
+			return
+		end
+
+		self.root.CFrame = targetCFrame
+		self.root.AssemblyLinearVelocity = Vector3.zero
+		self.root.AssemblyAngularVelocity = Vector3.zero
+		self.initialPosition = targetCFrame.Position
+		self.currentX = targetCFrame.Position.X
+		self.lockedZ = targetCFrame.Position.Z
+		self.groundY = targetCFrame.Position.Y
+		print("📍 [DummyController] Synced local dummy to replicated spawn:", targetCFrame.Position)
+	end
+
+	table.insert(
+		self.spawnSyncConnections,
+		character:GetAttributeChangedSignal("ReplicatedSpawnVersion"):Connect(function()
+			self:ApplyReplicatedSpawn()
+		end)
+	)
+	self:ApplyReplicatedSpawn()
 
 	self:PlayAnimation("Idle", 0.1)
 	self:_bindHitResult()
@@ -409,6 +447,15 @@ function DummyController:ResetPosition()
 	self.pushDecay = 0
 	self.root.CFrame = CFrame.new(self.initialPosition)
 	self.humanoid.Health = self.humanoid.MaxHealth
+end
+
+function DummyController:Destroy()
+	for _, connection in ipairs(self.spawnSyncConnections) do
+		if connection.Connected then
+			connection:Disconnect()
+		end
+	end
+	self.spawnSyncConnections = {}
 end
 
 return DummyController

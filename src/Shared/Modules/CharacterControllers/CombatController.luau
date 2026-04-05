@@ -544,8 +544,12 @@ function CombatController:RegisterStates(machine)
 			self.context.attackLocked = true
 			self.context.attackFrame = 0
 			self.context.canCancel = false
-			self.context.moveDirection = 0
 			self.context.lastAttack = attack
+
+			-- En el aire con allowAirAttackMovement: mantener moveDirection actual
+			if not (self.context.isAirborne and self.context.allowAirAttackMovement) then
+				self.context.moveDirection = 0
+			end
 
 			-- En el aire, no frenar Y
 			if not self.context.isAirborne then
@@ -1203,7 +1207,11 @@ function CombatController:RequestAttack(type)
 		self.context.currentAttack = attack
 		self.context.currentAnimationName = attack.Animation
 		self.context.punchComboCount = 0
-		self.context.moveDirection = 0
+
+		-- Mantener moveDirection si allowAirAttackMovement está activo
+		if not self.context.allowAirAttackMovement then
+			self.context.moveDirection = 0
+		end
 
 		self.context.machine:SetState("Attack")
 		return
