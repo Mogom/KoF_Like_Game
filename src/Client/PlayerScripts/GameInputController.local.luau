@@ -135,6 +135,44 @@ local function resetKeyState()
 	KeyState.Down = false
 end
 
+local function waitForCharacterCoreParts(character, timeoutSeconds)
+	timeoutSeconds = timeoutSeconds or 10
+	local started = os.clock()
+
+	while character and character.Parent and character == player.Character and os.clock() - started < timeoutSeconds do
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if humanoid and root then
+			return humanoid, root
+		end
+
+		local remaining = timeoutSeconds - (os.clock() - started)
+		if remaining <= 0 then
+			break
+		end
+
+		character.ChildAdded:Wait()
+	end
+
+	return nil, nil
+end
+
+local function findVersusOpponentCharacter()
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= player and otherPlayer:GetAttribute("GameMode") == "Versus" then
+			local otherCharacter = otherPlayer.Character
+			if otherCharacter and otherCharacter.Parent then
+				local otherRoot = otherCharacter:FindFirstChild("HumanoidRootPart")
+				if otherRoot then
+					return otherCharacter
+				end
+			end
+		end
+	end
+
+	return nil
+end
+
 local function syncCharacterToReplicatedSpawn(character, controllerInstance)
 	if not character or character ~= player.Character then
 		return
@@ -187,11 +225,16 @@ local function initializeForCharacter(character)
 	end
 
 	-- Esperar a que el personaje esté listo
-	local humanoid = character:WaitForChild("Humanoid", 5)
-	local root = character:WaitForChild("HumanoidRootPart", 5)
+	local humanoid, root = waitForCharacterCoreParts(character, 12)
 
 	if not humanoid or not root then
 		warn("⚠️ [Input] Character missing Humanoid or HumanoidRootPart")
+		-- Reintento suave para condiciones de carrera durante respawn/model swap
+		task.delay(0.5, function()
+			if player.Character == character then
+				initializeForCharacter(character)
+			end
+		end)
 		return
 	end
 
@@ -213,6 +256,19 @@ local function initializeForCharacter(character)
 		local enemyRoot = enemy:FindFirstChild("HumanoidRootPart")
 		if enemyRoot then
 			controller:SetOpponent(enemyRoot)
+		end
+	elseif player:GetAttribute("GameMode") == "Versus" then
+		local versusOpponent = findVersusOpponentCharacter()
+		if versusOpponent then
+			local versusRoot = versusOpponent:FindFirstChild("HumanoidRootPart")
+			if versusRoot then
+				controller:SetOpponent(versusRoot)
+				local selectedOpponentCharacter = Players:GetPlayerFromCharacter(versusOpponent)
+				if selectedOpponentCharacter then
+					local opponentName = selectedOpponentCharacter:GetAttribute("SelectedCharacter")
+					controller.animationController:LoadOpponentAnimations(versusOpponent, opponentName)
+				end
+			end
 		end
 	end
 
@@ -259,18 +315,27 @@ local function onInputBegan(input, processed)
 	-- Movimiento
 	if command == "Left" then
 		KeyState.Left = true
+		if controller and controller.context then
+			controller.context.inputLeft = true
+		end
 		resolveMovementFromKeyState()
 		return
 	end
 
 	if command == "Right" then
 		KeyState.Right = true
+		if controller and controller.context then
+			controller.context.inputRight = true
+		end
 		resolveMovementFromKeyState()
 		return
 	end
 
 	if command == "Down" then
 		KeyState.Down = true
+		if controller and controller.context then
+			controller.context.inputDown = true
+		end
 		controller:SetCrouch(true)
 		return
 	end
@@ -312,18 +377,27 @@ local function onInputEnded(input)
 
 	if command == "Left" then
 		KeyState.Left = false
+		if controller and controller.context then
+			controller.context.inputLeft = false
+		end
 		resolveMovementFromKeyState()
 		return
 	end
 
 	if command == "Right" then
 		KeyState.Right = false
+		if controller and controller.context then
+			controller.context.inputRight = false
+		end
 		resolveMovementFromKeyState()
 		return
 	end
 
 	if command == "Down" then
 		KeyState.Down = false
+		if controller and controller.context then
+			controller.context.inputDown = false
+		end
 		controller:SetCrouch(false)
 		return
 	end

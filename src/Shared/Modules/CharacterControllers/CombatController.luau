@@ -294,6 +294,7 @@ function CombatController:ApplyHitReaction(hitData)
 	self.context.isBlocking = false
 	self.context.isCrouchBlocking = false
 	self.context.isInBlockstun = false
+	self.context.suspendAirGravity = false
 
 	-- Sincronizar currentX con posición real antes de entrar en hitstun
 	-- Esto es el ÚNICO momento donde sincronizamos, no cada frame
@@ -557,6 +558,15 @@ function CombatController:RegisterStates(machine)
 				self.context.root.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
 			end
 
+			-- Suspender gravedad durante ataques aéreos (inmediato)
+			-- Para AttackJump, se suspende después de que el salto se aplique
+			if self.context.isAirborne then
+				self.context.suspendAirGravity = true
+				-- Congelar velocidad Y actual al iniciar el ataque aéreo
+				local vel = self.context.root.AssemblyLinearVelocity
+				self.context.root.AssemblyLinearVelocity = Vector3.new(vel.X, 0, vel.Z)
+			end
+
 			local animName = self.context.currentAnimationName or attack.Animation or attack.AnimationBase
 			self.animationController:PlayAnimation(animName, 0.1)
 
@@ -747,6 +757,30 @@ function CombatController:RegisterStates(machine)
 						dashStarted = true
 						-- Desbloquear posición para el dash
 						self.context.attackLockedX = nil
+
+						-- Aplicar impulso vertical si tiene DashLiftY (dash aéreo con subida)
+						if attack.DashLiftY and attack.DashLiftY ~= 0 and self.context.root then
+							-- Desactivar suspensión temporalmente para que el impulso se aplique
+							self.context.suspendAirGravity = false
+							local vel = self.context.root.AssemblyLinearVelocity
+							self.context.root.AssemblyLinearVelocity = Vector3.new(vel.X, attack.DashLiftY, vel.Z)
+
+							-- Re-suspender gravedad después de unos frames para que el lift se ejecute
+							local liftFrameCount = 0
+							local liftConn
+							liftConn = RunService.RenderStepped:Connect(function()
+								liftFrameCount += 1
+								if liftFrameCount >= 3 then
+									if self.context.machine:GetState() == "Attack" then
+										self.context.suspendAirGravity = true
+									end
+									if liftConn then
+										liftConn:Disconnect()
+										liftConn = nil
+									end
+								end
+							end)
+						end
 					end
 
 					dashFrameCount += 1
@@ -818,6 +852,24 @@ function CombatController:RegisterStates(machine)
 						local root = self.context.root
 						root.AssemblyLinearVelocity = Vector3.new(0, jumpHeight, 0)
 						self.context.isAirborne = true
+
+						-- Suspender gravedad después de aplicar el impulso del salto
+						-- Esperar unos frames para que el personaje suba antes de congelar
+						local gravityDelayFrames = 3
+						local gravityFrameCount = 0
+						local gravityConn
+						gravityConn = RunService.RenderStepped:Connect(function()
+							gravityFrameCount += 1
+							if gravityFrameCount >= gravityDelayFrames then
+								if self.context.machine:GetState() == "Attack" then
+									self.context.suspendAirGravity = true
+								end
+								if gravityConn then
+									gravityConn:Disconnect()
+									gravityConn = nil
+								end
+							end
+						end)
 					end
 				end)
 
@@ -901,6 +953,7 @@ function CombatController:RegisterStates(machine)
 				self.context.currentAttack = nil
 				self.context.currentAnimationName = nil
 				self.context.canCancel = false
+				self.context.suspendAirGravity = false
 
 				if _G.ForceResolveMovement then
 					_G.ForceResolveMovement()
@@ -1172,6 +1225,10 @@ function CombatController:RequestAttack(type)
 	end
 
 	local state = self.context.machine:GetState()
+	local inputLeft = self.context.inputLeft == true
+	local inputRight = self.context.inputRight == true
+	local inputDown = self.context.inputDown == true
+	local hasHorizontalInput = inputLeft ~= inputRight
 
 	-- Si estamos bloqueando, no se puede atacar
 	--if state == "Block" or state == "CrouchBlock" then
@@ -1187,13 +1244,22 @@ function CombatController:RequestAttack(type)
 			return
 		end
 
-		-- Mapear ataques de suelo a versiones aéreas
-		local airAttackMap = {
-			Punch = "AirPunch",
-			HeavyPunch = "AirHeavy",
-		}
+		local airType = nil
 
-		local airType = airAttackMap[type]
+		if type == "Punch" then
+			if inputDown then
+				airType = "AerialRush"
+			else
+				airType = "AirPunch"
+			end
+		elseif type == "HeavyPunch" then
+			if inputDown and self.attacks.AirHeavyDown then
+				airType = "AirHeavyDown"
+			elseif self.attacks.AirHeavy then
+				airType = "AirHeavy"
+			end
+		end
+
 		if not airType then
 			return
 		end
@@ -1239,6 +1305,11 @@ function CombatController:RequestAttack(type)
 			}
 			if crouchAttackMap[type] and self.attacks[crouchAttackMap[type]] then
 				actualType = crouchAttackMap[type]
+			end
+		elseif type == "HeavyPunch" then
+			-- Heavy direccional solo si se mantiene A o D
+			if hasHorizontalInput and self.attacks.HeavyPunchDirectional then
+				actualType = "HeavyPunchDirectional"
 			end
 		end
 	end

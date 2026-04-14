@@ -23,7 +23,7 @@ function Hitbox.new(root, data)
 	self.part.CanCollide = false
 	self.part.CanTouch = false
 	self.part.CanQuery = true
-	self.part.Transparency = 1
+	self.part.Transparency = .5
 	self.part.Name = "DebugHitbox"
 	self.part.Parent = workspace
 

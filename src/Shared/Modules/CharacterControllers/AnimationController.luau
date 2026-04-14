@@ -210,9 +210,11 @@ function AnimationController:StopCurrent(fadeTime)
 	end
 end
 
--- Reproduce animación usando sufijo direccional y replica al servidor
-function AnimationController:PlayAnimation(baseName, fadeTime)
+-- Reproduce animación usando sufijo direccional y replica al servidor.
+-- forceReplay: si true, reinicia aunque sea la misma animación en reproducción.
+function AnimationController:PlayAnimation(baseName, fadeTime, forceReplay)
 	fadeTime = fadeTime or 0.15
+	forceReplay = forceReplay == true
 
 	local fullName = baseName .. "_" .. self.context.currentDirection
 
@@ -220,7 +222,12 @@ function AnimationController:PlayAnimation(baseName, fadeTime)
 		print("🎬 Playing animation:", fullName)
 	end
 
-	if self.currentAnimationName == fullName and self.currentAnimation and self.currentAnimation.IsPlaying then
+	if
+		not forceReplay
+		and self.currentAnimationName == fullName
+		and self.currentAnimation
+		and self.currentAnimation.IsPlaying
+	then
 		return true
 	end
 
@@ -231,6 +238,7 @@ function AnimationController:PlayAnimation(baseName, fadeTime)
 	local anim = self.animations[fullName]
 
 	if anim then
+		anim.TimePosition = 0
 		anim:Play(0, 1, 1)
 		self.currentAnimation = anim
 		self.currentAnimationName = fullName
@@ -243,6 +251,7 @@ function AnimationController:PlayAnimation(baseName, fadeTime)
 
 	if fallbackAnim then
 		warn("⚠️ Using fallback animation:", fallbackName)
+		fallbackAnim.TimePosition = 0
 		fallbackAnim:Play(0, 1, 1)
 		self.currentAnimation = fallbackAnim
 		self.currentAnimationName = fallbackName

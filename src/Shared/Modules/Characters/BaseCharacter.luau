@@ -92,7 +92,7 @@ BaseCharacter.Info = {
 	Icon = "",
 	Description = "Personaje base",
 	Health = 100,
-	WalkSpeed = 16,
+	WalkSpeed = 40,
 }
 
 BaseCharacter.Attacks = {}

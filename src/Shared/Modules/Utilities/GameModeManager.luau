@@ -689,10 +689,10 @@ function GameModeManager.GetOpponents(player)
 		return ffaData.opponents
 	end
 
-	-- Fallback para 1v1
+	-- Fallback para 1v1 (activeMatches almacena Player objects, retornar Characters)
 	local opponent = activeMatches[player]
-	if opponent then
-		return { opponent }
+	if opponent and opponent.Character and opponent.Character.Parent then
+		return { opponent.Character }
 	end
 
 	return {}

@@ -66,12 +66,12 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 	-- Usar distancia en X solamente (es un juego 2D/2.5D, Z está lockeado)
 	-- Tolerancia amplia: el dummy no tiene NetworkOwner así que su posición
 	-- en el servidor puede estar desincronizada con el cliente.
-	local distanceX = math.abs(attackerRoot.Position.X - victimRoot.Position.X)
-	local distanceY = math.abs(attackerRoot.Position.Y - victimRoot.Position.Y)
-	if distanceX > 30 or distanceY > 20 then
-		warn("❌ Hit rejected: too far. DistX:", distanceX, "DistY:", distanceY)
-		return
-	end
+	-- local distanceX = math.abs(attackerRoot.Position.X - victimRoot.Position.X)
+	-- local distanceY = math.abs(attackerRoot.Position.Y - victimRoot.Position.Y)
+	-- if distanceX > 40 or distanceY > 20 then
+	-- 	warn("❌ Hit rejected: too far. DistX:", distanceX, "DistY:", distanceY)
+	-- 	return
+	-- end
 
 	local victimPlayer = Players:GetPlayerFromCharacter(victimCharacter)
 	local expectedOpponent = GameModeManager.GetOpponent(attackerPlayer)

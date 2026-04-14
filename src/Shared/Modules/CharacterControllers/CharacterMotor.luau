@@ -46,7 +46,7 @@ function CharacterMotor.new(context, animationController)
 	self.context.doubleJumpForce = self.context.doubleJumpForce or 55
 	self.context.canDoubleJump = self.context.canDoubleJump ~= false
 	self.context.hasDoubleJumped = false
-	self.context.airMoveSpeed = 10
+	self.context.airMoveSpeed = self.context.airMoveSpeed or math.max(10, self.context.speed * 0.65)
 	self.context.hasAirAttacked = false
 	self.context.isInAirHitstun = false
 	self.context.juggleCount = 0
@@ -124,12 +124,13 @@ function CharacterMotor:SetCrouch(state)
 		return
 	end
 
-	self.context.isCrouching = state
-	--self:_updateBlockState()
-
+	-- No permitir agacharse en el aire
 	if self.context.isAirborne then
 		return
 	end
+
+	self.context.isCrouching = state
+	--self:_updateBlockState()
 
 	if state then
 		if
@@ -256,7 +257,7 @@ function CharacterMotor:DoubleJump()
 
 	local doubleJumpAnim = self.context.doubleJumpAnimation or "Jump"
 	if self.animationController then
-		self.animationController:PlayAnimation(doubleJumpAnim, 0.08)
+		self.animationController:PlayAnimation(doubleJumpAnim, 0.08, true)
 	end
 
 	return true
@@ -292,6 +293,7 @@ function CharacterMotor:UpdateAirState()
 		self.context.isInAirHitstun = false
 		self.context.juggleCount = 0
 		self.context.hasDoubleJumped = false -- Resetear doble salto al aterrizar
+		self.context.suspendAirGravity = false -- Restaurar gravedad al aterrizar
 
 		if self.context.isKnockedDown then
 			return
@@ -689,7 +691,12 @@ function CharacterMotor:Update(dt)
 	end
 
 	local velocity = root.AssemblyLinearVelocity
-	root.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
+	-- Suspender gravedad durante ataques aéreos/AttackJump: congelar Y en 0
+	if self.context.suspendAirGravity then
+		root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+	else
+		root.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
+	end
 
 	self:UpdateAirState()
 	self:UpdateFacing()

@@ -8,6 +8,16 @@ local leftArm = model["Left Arm"]
 local rightArm = model["Right Arm"]
 local leftLeg = model["Left Leg"]
 local rightLeg = model["Right Leg"]
+
+local HumanoidRootPart = Instance.new("Part")
+HumanoidRootPart.Name = "HumanoidRootPart"
+HumanoidRootPart.Size = Vector3.new(2, 2, 1)
+HumanoidRootPart.Transparency = 1
+HumanoidRootPart.CanCollide = false
+HumanoidRootPart.Anchored = true
+HumanoidRootPart.CFrame = torso.CFrame
+HumanoidRootPart.Parent = model
+
 local hrp = model.HumanoidRootPart
 
 -- Root Joint: HumanoidRootPart → Torso

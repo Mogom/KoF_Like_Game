@@ -67,6 +67,7 @@ function CharacterController.new(character, machine, characterName)
 
 	-- Aplicar stats del personaje
 	local walkSpeed = (charInfo and charInfo.WalkSpeed) or 16
+	local airMoveSpeed = (charInfo and charInfo.AirMoveSpeed) or math.max(10, walkSpeed * 0.65)
 	local weight = (charInfo and charInfo.Weight) or 1.0
 	local gravityScale = (charInfo and charInfo.GravityScale) or 1.0
 	local jumpForce = (charInfo and charInfo.JumpForce) or 62
@@ -93,6 +94,9 @@ function CharacterController.new(character, machine, characterName)
 		currentDirection = "R",
 		speed = walkSpeed,
 		isCrouching = false,
+		inputLeft = false,
+		inputRight = false,
+		inputDown = false,
 		crouchSpeedMultiplier = 0.2,
 		lockedZ = root.Position.Z,
 
@@ -129,7 +133,7 @@ function CharacterController.new(character, machine, characterName)
 		doubleJumpAnimation = doubleJumpAnimation,
 		canDoubleJump = true, -- Se resetea al aterrizar
 		hasDoubleJumped = false, -- Tracking del doble salto
-		airMoveSpeed = 10,
+		airMoveSpeed = airMoveSpeed,
 		hasAirAttacked = false,
 		isInAirHitstun = false,
 		juggleCount = 0,
@@ -226,8 +230,17 @@ function CharacterController.new(character, machine, characterName)
 	end
 
 	SetOpponentEvent.OnClientEvent:Connect(function(opponentCharacter)
-		if opponentCharacter and opponentCharacter:FindFirstChild("HumanoidRootPart") then
-			self:SetOpponent(opponentCharacter.HumanoidRootPart)
+		if opponentCharacter and opponentCharacter.Parent then
+			local opponentRoot = opponentCharacter:FindFirstChild("HumanoidRootPart")
+			if not opponentRoot then
+				opponentRoot = opponentCharacter:WaitForChild("HumanoidRootPart", 5)
+			end
+
+			if not opponentRoot then
+				return
+			end
+
+			self:SetOpponent(opponentRoot)
 
 			-- Resolver nombre de personaje del oponente
 			local opponentCharName = nil

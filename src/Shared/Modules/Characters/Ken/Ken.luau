@@ -12,7 +12,8 @@
 	│ CrouchPunch     │ S + J  (agachado + puño)       │ Light    │
 	│ CrouchHeavy     │ S + K  (agachado + pesado)     │ Heavy    │
 	│ AirPunch        │ J (en el aire)                 │ Light    │
-	│ AirHeavy        │ K (en el aire)                 │ Heavy    │
+	│ AirHeavy        │ K (en el aire, ascendente)     │ Heavy    │
+	│ AirHeavyDown    │ S + K (en el aire, hacia abajo)│ Heavy    │
 	│ Fireball        │ ↓ → J  (Down, Forward, Punch)  │ Special  │
 	│ Uppercut        │ → ↓ → J (Fwd, Down, Fwd, Punch)│ Special  │
 	└─────────────────┴────────────────────────────────┴──────────┘
@@ -103,8 +104,44 @@ Ken.Attacks.Punch = {
 	VFX_Limbs = { "LeftHand", "LeftHand", "RightFoot" },
 }
 
--- Puño pesado con avance (dash positivo, agresivo)
+-- Puño pesado base (Standing Heavy) - sin desplazamiento
 Ken.Attacks.HeavyPunch = {
+	Id = "HeavyPunch",
+	Startup = 10 / 60,
+	Active = 4 / 60,
+	Recovery = 14 / 60,
+	Animation = "HeavyPunch",
+	SoundEffect = "Punch",
+	SoundVolume = 0.9,
+	HitType = "Heavy",
+	HitAnimation = "HurtLight",
+	AttackHeight = "Mid",
+	Damage = 22,
+	HitstunDuration = 0.38,
+	Pushback = 6,
+	HitstopFrames = 8,
+	BlockPushback = 9,
+	BlockstunDuration = 0.22,
+	ChipDamage = 2,
+	GroundOnly = false,
+	Knockdown = false,
+	LaunchForce = nil,
+	CancelWindow = { Start = 7, End = 13 },
+	Hitbox = {
+		Size = Vector3.new(4, 3, 5),
+		Offset = Vector3.new(0, 0, -4),
+	},
+	-- VFX: Startup sigue la mano, OnHit en posición de impacto
+	VFX = {
+		Startup = "Startup",
+		Active = "Active",
+		OnHit = "OnHit",
+	},
+	VFX_Limb = "RightHand",
+}
+
+-- Puño pesado direccional (A o D + HeavyPunch)
+Ken.Attacks.HeavyPunchDirectional = {
 	Id = "HeavyPunch",
 	Startup = 10 / 60,
 	Active = 4 / 60,
@@ -135,7 +172,6 @@ Ken.Attacks.HeavyPunch = {
 		Size = Vector3.new(4, 3, 5),
 		Offset = Vector3.new(0, 0, -4),
 	},
-	-- VFX: Startup sigue la mano, OnHit en posición de impacto
 	VFX = {
 		Startup = "Startup",
 		Active = "Active",
@@ -246,8 +282,43 @@ Ken.Attacks.AirPunch = {
 	},
 }
 
-Ken.Attacks.AirHeavy = {
-	Id = "AirHeavy",
+-- Aerial Rush (S + Punch en el aire): diagonal hacia abajo
+Ken.Attacks.AerialRush = {
+	Id = "AerialRush",
+	Startup = 3 / 60,
+	Active = 5 / 60,
+	Recovery = 9 / 60,
+	Animation = "AirPunch",
+	SoundEffect = "Punch",
+	SoundVolume = 0.6,
+	HitType = "Light",
+	HitAnimation = "AirHurt",
+	AttackHeight = "High",
+	Damage = 8,
+	AttackDash = true,
+	DashDistance = 9,
+	DashFrameStart = 2,
+	DashDuration = 5,
+	DashLiftY = -28,
+	HitstunDuration = 0.18,
+	Pushback = 5,
+	HitstopFrames = 3,
+	BlockPushback = 4,
+	BlockstunDuration = 0.1,
+	ChipDamage = 0,
+	AirOk = true,
+	GroundOnly = false,
+	Knockdown = false,
+	LaunchForce = nil,
+	CancelWindow = nil,
+	Hitbox = {
+		Size = Vector3.new(4, 4, 4),
+		Offset = Vector3.new(0, -1, -2),
+	},
+}
+
+Ken.Attacks.AirHeavyDown = {
+	Id = "AirHeavyDown",
 	Startup = 7 / 60,
 	Active = 5 / 60,
 	Recovery = 12 / 60,
@@ -272,6 +343,42 @@ Ken.Attacks.AirHeavy = {
 	Hitbox = {
 		Size = Vector3.new(5, 4, 5),
 		Offset = Vector3.new(0, -2, -3),
+	},
+	VFX = {
+		Startup = "Startup",
+	},
+	VFX_Limb = "RightHand",
+}
+
+Ken.Attacks.AirHeavy = {
+	Id = "AirHeavy",
+	Startup = 5 / 60,
+	Active = 6 / 60,
+	Recovery = 13 / 60,
+	Animation = "Uppercut",
+	SoundEffect = "Punch",
+	SoundVolume = 0.9,
+	HitType = "Heavy",
+	HitAnimation = "Launch",
+	AttackHeight = "High",
+	Damage = 18,
+	HitstunDuration = 0.38,
+	Pushback = 5,
+	HitstopFrames = 8,
+	BlockPushback = 8,
+	BlockstunDuration = 0.2,
+	ChipDamage = 1,
+	AirOk = true,
+	GroundOnly = false,
+	Knockdown = true,
+	LaunchForce = 40,
+	AttackJump = true,
+	JumpHeight = 40,
+	JumpFrameStart = 1,
+	CancelWindow = nil,
+	Hitbox = {
+		Size = Vector3.new(4, 7, 4),
+		Offset = Vector3.new(0, 1, -2),
 	},
 	VFX = {
 		Startup = "Startup",

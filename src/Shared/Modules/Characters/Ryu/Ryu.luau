@@ -12,7 +12,8 @@
 	│ CrouchPunch     │ S + J  (agachado + puño)       │ Light    │
 	│ CrouchHeavy     │ S + K  (agachado + pesado)     │ Heavy    │
 	│ AirPunch        │ J (en el aire)                 │ Light    │
-	│ AirHeavy        │ K (en el aire)                 │ Heavy    │
+	│ AirHeavy        │ K (en el aire, ascendente)     │ Heavy    │
+	│ AirHeavyDown    │ S + K (en el aire, hacia abajo)│ Heavy    │
 	│ Fireball        │ ↓ → J  (Down, Forward, Punch)  │ Special  │
 	│ Uppercut        │ → ↓ → J (Fwd, Down, Fwd, Punch)│ Special │
 	└─────────────────┴────────────────────────────────┴──────────┘
@@ -38,12 +39,13 @@ Ryu.Info = {
 	Icon = "", -- Asignar rbxassetid cuando tengas el ícono
 	Description = "Peleador equilibrado con proyectil y antiáereo.",
 	Health = 100,
-	WalkSpeed = 16,
+	WalkSpeed = 20,
 	Weight = 1.0, -- Peso estándar
 	GravityScale = 1.0, -- Gravedad normal
 	Color = Color3.fromRGB(220, 220, 220), -- Color representativo (blanco)
 	JumpForce = 62, -- Fuerza del primer salto (default engine: 50)
 	DoubleJumpForce = 55, -- Fuerza del doble salto (un poco menor)
+	AirMoveSpeed = 25,
 }
 
 -- ============================================
@@ -66,8 +68,8 @@ Ryu.Attacks.Punch = {
 	AttackHeight = "Mid",
 	Damage = 10,
 	HitstunDuration = 0.22,
-	Pushback = 20,
-	HitstopFrames = 40,
+	Pushback = 5,
+	HitstopFrames = 5,
 	BlockPushback = 6,
 	BlockstunDuration = 0.15,
 	ChipDamage = 0,
@@ -93,8 +95,45 @@ Ryu.Attacks.Punch = {
 	VFX_Limbs = { "RightHand", "LeftHand", "RightFoot" },
 }
 
--- Puño pesado con retroceso (Standing Heavy)
+-- Puño pesado base (Standing Heavy) - sin desplazamiento
 Ryu.Attacks.HeavyPunch = {
+	Id = "HeavyPunch",
+	Startup = 12 / 60,
+	Active = 3 / 60,
+	Recovery = 16 / 60,
+	Animation = "HeavyPunch",
+	SoundEffect = "Punch",
+	SoundVolume = 0.9,
+	HitType = "Heavy",
+	HitAnimation = "HurtLight",
+	AttackHeight = "Mid",
+	Damage = 20,
+	HitstunDuration = 0.4,
+	Pushback = 5.5,
+	HitstopFrames = 9,
+	BlockPushback = 10,
+	BlockstunDuration = 0.25,
+	ChipDamage = 2,
+	GroundOnly = false,
+	Knockdown = false,
+	LaunchForce = nil,
+	CancelWindow = { Start = 8, End = 14 },
+	Hitbox = {
+		Size = Vector3.new(4, 3, 5),
+		Offset = Vector3.new(0, 0, -4),
+	},
+	VFX = {
+		Startup = "Startup",
+		Active = "Active",
+		OnHit = "OnHit",
+	},
+	-- Para combos: cada golpe sucesivo usa la extremidad correspondiente
+	-- Punch1 → puño derecho, Punch2 → puño izquierdo, Punch3 → patada derecha
+	VFX_Limb = "RightHand",
+}
+
+-- Puño pesado direccional (A o D + HeavyPunch)
+Ryu.Attacks.HeavyPunchDirectional = {
 	Id = "HeavyPunch",
 	Startup = 12 / 60,
 	Active = 3 / 60,
@@ -130,8 +169,6 @@ Ryu.Attacks.HeavyPunch = {
 		Active = "Active",
 		OnHit = "OnHit",
 	},
-	-- Para combos: cada golpe sucesivo usa la extremidad correspondiente
-	-- Punch1 → puño derecho, Punch2 → puño izquierdo, Punch3 → patada derecha
 	VFX_Limb = "RightHand",
 }
 
@@ -223,9 +260,11 @@ Ryu.Attacks.AirPunch = {
 	HitAnimation = "AirHurt",
 	AttackHeight = "High",
 	Damage = 8,
+	AttackDash = true,
 	DashDistance = 4,
 	DashFrameStart = 3,
 	DashDuration = 5,
+	DashLiftY = 20,
 	HitstunDuration = 0.2,
 	Pushback = 4,
 	HitstopFrames = 4,
@@ -243,8 +282,43 @@ Ryu.Attacks.AirPunch = {
 	},
 }
 
-Ryu.Attacks.AirHeavy = {
-	Id = "AirHeavy",
+-- Aerial Rush (S + Punch en el aire): diagonal hacia abajo
+Ryu.Attacks.AerialRush = {
+	Id = "AerialRush",
+	Startup = 3 / 60,
+	Active = 5 / 60,
+	Recovery = 10 / 60,
+	Animation = "CrouchPunch",
+	SoundEffect = "Punch",
+	SoundVolume = 0.6,
+	HitType = "Light",
+	HitAnimation = "AirHurt",
+	AttackHeight = "High",
+	Damage = 9,
+	AttackDash = true,
+	DashDistance = 4,
+	DashFrameStart = 2,
+	DashDuration = 5,
+	DashLiftY = -30,
+	HitstunDuration = 0.2,
+	Pushback = 5,
+	HitstopFrames = 4,
+	BlockPushback = 5,
+	BlockstunDuration = 0.12,
+	ChipDamage = 0,
+	AirOk = true,
+	GroundOnly = false,
+	Knockdown = false,
+	LaunchForce = nil,
+	CancelWindow = nil,
+	Hitbox = {
+		Size = Vector3.new(4, 4, 4),
+		Offset = Vector3.new(0, -1, -2),
+	},
+}
+
+Ryu.Attacks.AirHeavyDown = {
+	Id = "AirHeavyDown",
 	Startup = 8 / 60,
 	Active = 4 / 60,
 	Recovery = 14 / 60,
@@ -269,6 +343,38 @@ Ryu.Attacks.AirHeavy = {
 	Hitbox = {
 		Size = Vector3.new(5, 4, 5),
 		Offset = Vector3.new(0, -2, -3),
+	},
+}
+
+Ryu.Attacks.AirHeavy = {
+	Id = "AirHeavy",
+	Startup = 6 / 60,
+	Active = 5 / 60,
+	Recovery = 14 / 60,
+	Animation = "Uppercut",
+	SoundEffect = "Punch",
+	SoundVolume = 0.9,
+	HitType = "Heavy",
+	HitAnimation = "Launch",
+	AttackHeight = "High",
+	Damage = 16,
+	HitstunDuration = 0.35,
+	Pushback = 4,
+	HitstopFrames = 8,
+	BlockPushback = 8,
+	BlockstunDuration = 0.2,
+	ChipDamage = 1,
+	AirOk = true,
+	GroundOnly = false,
+	Knockdown = true,
+	LaunchForce = 35,
+	AttackJump = true,
+	JumpHeight = 38,
+	JumpFrameStart = 1,
+	CancelWindow = nil,
+	Hitbox = {
+		Size = Vector3.new(4, 6, 4),
+		Offset = Vector3.new(0, 1, -2),
 	},
 }
 
