@@ -123,6 +123,11 @@ function StockManager.RespawnPlayerAt(player, position, facingRight, invulnSecon
 		humanoid.Health = humanoid.MaxHealth
 	end
 
+	-- Reset daño acumulado (percent) al respawnear
+	if character then
+		character:SetAttribute("DamagePercent", 0)
+	end
+
 	player:SetAttribute("IsRespawnInvulnerable", true)
 	setInvulnerability(character, true)
 	blinkInvulnAura(character, invulnSeconds)

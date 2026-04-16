@@ -144,6 +144,9 @@ function CharacterController.new(character, machine, characterName)
 		gravityScale = gravityScale, -- Multiplicador de gravedad (mayor = cae más rápido)
 		juggleDecay = 0.15, -- Reducción de hitstun/launch por cada juggle (15% por hit)
 
+		-- Knockback direccional (Smash-style percent system)
+		damagePercent = 0, -- Daño acumulado que escala el knockback
+
 		-- Knockdown state
 		isKnockedDown = false,
 		knockdownReactionId = 0,
@@ -538,9 +541,18 @@ function CharacterController:_registerBaseStates()
 	})
 end
 
--- Solicita un dodge si el estado lo permite
+-- Solicita un dodge si el estado lo permite, o air tech si está en air hitstun
 function CharacterController:Dodge()
+	-- Air Tech: permitir dodge durante air hitstun para cancelar con tech
+	if self.context.isInAirHitstun and self.context.canAirTech then
+		return self.combat:AirTech()
+	end
+
 	if self.context.isInHitstun or self.context.isKnockedDown or self.context.isInWakeup or self.context.isDodging then
+		return
+	end
+
+	if self.context.isInFreeFall then
 		return
 	end
 

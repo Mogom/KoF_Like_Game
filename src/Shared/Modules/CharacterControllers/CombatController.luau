@@ -1,3 +1,4 @@
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -17,6 +18,21 @@ local ReplicateVFXEvent = RemoteEvents:WaitForChild("ReplicateVFX")
 -- Controlador de combate: ataques, hit reactions, hitstun, knockdown, predicción del oponente
 local CombatController = {}
 CombatController.__index = CombatController
+
+local function usesClassicHealth(context)
+	local ownerPlayer = Players:GetPlayerFromCharacter(context.character)
+	local mode = nil
+
+	if ownerPlayer then
+		mode = ownerPlayer:GetAttribute("GameMode")
+	end
+
+	if not mode then
+		mode = context.character:GetAttribute("GameMode")
+	end
+
+	return mode == "Classic"
+end
 
 -- Inicializa estados de combate y predicción del oponente
 function CombatController.new(context, animationController)
@@ -96,6 +112,9 @@ function CombatController:_bindHitListener()
 
 		local hitData = {
 			Damage = self.context.character:GetAttribute("LastHitDamage") or 0,
+			DamagePercent = self.context.character:GetAttribute("LastDamagePercent")
+				or self.context.character:GetAttribute("DamagePercent")
+				or 0,
 			HitType = self.context.character:GetAttribute("LastHitType") or "Light",
 			HitAnimation = self.context.character:GetAttribute("LastHitAnimation") or "HurtLight",
 			HitstunDuration = self.context.character:GetAttribute("LastHitstunDuration") or 0.25,
@@ -109,6 +128,9 @@ function CombatController:_bindHitListener()
 			ChipDamage = self.context.character:GetAttribute("LastChipDamage") or 0,
 			Knockdown = self.context.character:GetAttribute("LastKnockdown") or false,
 			LaunchForce = self.context.character:GetAttribute("LastLaunchForce") or 0,
+			LaunchAngle = self.context.character:GetAttribute("LastLaunchAngle") or 0,
+			BaseKnockback = self.context.character:GetAttribute("LastBaseKnockback") or 0,
+			KnockbackGrowth = self.context.character:GetAttribute("LastKnockbackGrowth") or 0,
 		}
 
 		self:ProcessIncomingHit(hitData)
@@ -198,7 +220,7 @@ function CombatController:ApplyBlockReaction(hitData)
 	local hitstopFrames = hitData.HitstopFrames or 0
 
 	-- Chip damage
-	if chipDamage > 0 then
+	if chipDamage > 0 and usesClassicHealth(self.context) then
 		local humanoid = self.context.humanoid
 		if humanoid then
 			humanoid:TakeDamage(chipDamage)
@@ -302,6 +324,8 @@ function CombatController:ApplyHitReaction(hitData)
 	self.context.attackLockedX = nil
 	self.context.pushVelocityX = 0
 	self.context.pushDecay = 0
+	self.context.pushVelocityY = 0
+	self.context.pushDecayY = 0
 
 	local hitAnimation = hitData.HitAnimation or "HurtLight"
 	local hitstunDuration = hitData.HitstunDuration or 0.35
@@ -309,6 +333,41 @@ function CombatController:ApplyHitReaction(hitData)
 	local knockdown = hitData.Knockdown or false
 	local launchForce = hitData.LaunchForce or 0
 	local horizontalLaunch = hitData.HorizontalLaunch or 0
+
+	-- =============================================
+	-- DAÑO ACUMULADO (percent): escala el knockback al estilo Smash
+	-- =============================================
+	local damage = hitData.Damage or 0
+	self.context.damagePercent = hitData.DamagePercent
+		or self.context.character:GetAttribute("DamagePercent")
+		or ((self.context.damagePercent or 0) + damage)
+	self.context.character:SetAttribute("DamagePercent", self.context.damagePercent)
+
+	-- =============================================
+	-- KNOCKBACK DIRECCIONAL: calcular knockback basado en ángulo + percent
+	-- Fórmula: totalKnockback = BaseKnockback + (damagePercent * KnockbackGrowth * 0.1)
+	-- Luego se descompone en X/Y usando LaunchAngle
+	-- =============================================
+	local launchAngle = hitData.LaunchAngle -- nil = usar pushback clásico
+	local baseKnockback = hitData.BaseKnockback or 0
+	local knockbackGrowth = hitData.KnockbackGrowth or 0
+
+	local knockbackX = 0
+	local knockbackY = 0
+
+	if launchAngle and baseKnockback > 0 then
+		local totalKnockback = baseKnockback + (self.context.damagePercent * knockbackGrowth * 0.1)
+
+		-- Weight system
+		local victimWeight = self.context.weight or 1.0
+		local weightMul = 1 / math.max(0.3, victimWeight)
+		totalKnockback = totalKnockback * weightMul
+
+		-- Descomponer en componentes usando el ángulo
+		local angleRad = math.rad(launchAngle)
+		knockbackX = totalKnockback * math.cos(angleRad)
+		knockbackY = totalKnockback * math.sin(angleRad)
+	end
 
 	-- =============================================
 	-- JUGGLE DECAY: cada hit aéreo reduce la fuerza de lanzamiento y hitstun
@@ -332,6 +391,8 @@ function CombatController:ApplyHitReaction(hitData)
 		hitstunDuration = hitstunDuration * decayMultiplier
 		launchForce = launchForce * decayMultiplier
 		horizontalLaunch = horizontalLaunch * decayMultiplier
+		knockbackX = knockbackX * decayMultiplier
+		knockbackY = knockbackY * decayMultiplier
 	end
 
 	-- Si tiene launch force, lanzar al aire
@@ -368,6 +429,12 @@ function CombatController:ApplyHitReaction(hitData)
 		end
 
 		root.AssemblyLinearVelocity = Vector3.new(pushDir * hLaunch, scaledLaunch, 0)
+	elseif knockbackY > 0 and not self.context.isAirborne then
+		-- Knockback direccional con componente vertical: lanzar al aire
+		hitAnimation = "Launch"
+		self.context.isAirborne = true
+		self.context.isInAirHitstun = true
+		self.context.juggleCount = 1
 	end
 
 	self.context.machine:SetState("Hitstun")
@@ -392,34 +459,72 @@ function CombatController:ApplyHitReaction(hitData)
 		end
 
 		HitstopService:Apply(self.context.character, hitstopFrames, animsToFreeze, function()
-			self:_applyPostHitstopPushback(hitData, reactionId, hitstunDuration, knockdown)
+			self:_applyPostHitstopPushback(hitData, reactionId, hitstunDuration, knockdown, knockbackX, knockbackY)
 		end)
 	else
-		self:_applyPostHitstopPushback(hitData, reactionId, hitstunDuration, knockdown)
+		self:_applyPostHitstopPushback(hitData, reactionId, hitstunDuration, knockdown, knockbackX, knockbackY)
 	end
 end
 
--- Post-hitstop: sincroniza currentX, aplica pushback, programa salida de hitstun
-function CombatController:_applyPostHitstopPushback(hitData, reactionId, hitstunDuration, knockdown)
+-- Post-hitstop: sincroniza currentX, aplica pushback direccional, programa salida de hitstun
+function CombatController:_applyPostHitstopPushback(
+	hitData,
+	reactionId,
+	hitstunDuration,
+	knockdown,
+	knockbackX,
+	knockbackY
+)
 	-- Re-sincronizar currentX con la posición física real antes de aplicar pushback.
 	-- Esto garantiza que el pushback arranque desde la posición exacta del personaje,
 	-- evitando drift acumulado durante el hitstop.
 	self.context.currentX = self.context.root.Position.X
 
-	local pushback = hitData.Pushback or 0
-	if pushback > 0 and self.context.motor and self.context.motor.ApplyPushReaction then
-		local attackerX = hitData.AttackerPositionX or 0
+	knockbackX = knockbackX or 0
+	knockbackY = knockbackY or 0
 
-		local victimX = self.context.currentX
-		local direction = victimX >= attackerX and 1 or -1
+	local attackerX = hitData.AttackerPositionX or 0
+	local victimX = self.context.currentX
+	local direction = victimX >= attackerX and 1 or -1
 
-		self.context.motor:ApplyPushReaction(pushback, direction, hitstunDuration)
+	-- Si hay knockback direccional (LaunchAngle), usar componentes calculados
+	if knockbackX ~= 0 or knockbackY ~= 0 then
+		if self.context.motor and self.context.motor.ApplyPushReaction then
+			self.context.motor:ApplyPushReaction(knockbackX, direction, hitstunDuration, knockbackY)
+		end
+	else
+		-- Fallback: pushback clásico lineal (solo X)
+		local pushback = hitData.Pushback or 0
+		if pushback > 0 and self.context.motor and self.context.motor.ApplyPushReaction then
+			self.context.motor:ApplyPushReaction(pushback, direction, hitstunDuration)
+		end
+	end
+
+	-- =============================================
+	-- 🪂 AIR TECH WINDOW: activar tech después de 40% del hitstun aéreo
+	-- =============================================
+	if self.context.isInAirHitstun and (self.context.airTechCooldown or 0) <= 0 then
+		local techDelay = hitstunDuration * 0.4
+		task.delay(techDelay, function()
+			if reactionId ~= self.context.hitstunReactionId then
+				return
+			end
+			if not self.context.isInAirHitstun then
+				return
+			end
+
+			self.context.canAirTech = true
+			self:_startTechFlash()
+		end)
 	end
 
 	task.delay(hitstunDuration, function()
 		if reactionId ~= self.context.hitstunReactionId then
 			return
 		end
+
+		-- Limpiar canAirTech si el hitstun terminó naturalmente
+		self.context.canAirTech = false
 
 		-- Limpiar attack lock
 		self.context.attackLockedX = nil
@@ -430,6 +535,8 @@ function CombatController:_applyPostHitstopPushback(hitData, reactionId, hitstun
 		self.context.currentX = self.context.root.Position.X
 		self.context.pushVelocityX = 0
 		self.context.pushDecay = 0
+		self.context.pushVelocityY = 0
+		self.context.pushDecayY = 0
 
 		self.context.isInHitstun = false
 		self.context.isInAirHitstun = false
@@ -521,6 +628,104 @@ function CombatController:_startWakeup(knockdownId)
 end
 
 -- =============================================
+-- 🪂 AIR TECH / RECOVERY
+-- =============================================
+-- Cancela hitstun aéreo con un tech: breves i-frames, luego FreeFall con control limitado
+function CombatController:AirTech()
+	-- Solo se puede hacer tech durante air hitstun
+	if not self.context.isInAirHitstun then
+		return false
+	end
+
+	-- No durante hitstop
+	if HitstopService:IsInHitstop(self.context.character) then
+		return false
+	end
+
+	-- Cooldown check
+	if (self.context.airTechCooldown or 0) > 0 then
+		return false
+	end
+
+	-- No se puede tech si no es techeable aún
+	if not self.context.canAirTech then
+		return false
+	end
+
+	-- Incrementar hitstunReactionId para invalidar la limpieza delayed del hitstun actual
+	self.context.hitstunReactionId += 1
+
+	-- Cancelar hitstun
+	self.context.isInHitstun = false
+	self.context.isInAirHitstun = false
+	self.context.canAirTech = false
+
+	-- Limpiar pushback
+	self.context.pushVelocityX = 0
+	self.context.pushDecay = 0
+	self.context.pushVelocityY = 0
+	self.context.pushDecayY = 0
+
+	-- Reducir velocidad actual (frenar el knockback)
+	local root = self.context.root
+	local vel = root.AssemblyLinearVelocity
+	root.AssemblyLinearVelocity = Vector3.new(vel.X * 0.3, math.max(vel.Y * 0.2, 0), 0)
+
+	-- Entrar en FreeFall: control limitado, sin poder atacar
+	self.context.isInFreeFall = true
+	self.context.attackLocked = true
+	self.context.freeFallSpeed = self.context.airMoveSpeed * 0.5
+
+	-- Iniciar cooldown
+	self.context.airTechCooldown = self.context.airTechCooldownMax or 2.5
+
+	-- I-frames breves (0.3s)
+	local hurtboxBody = self.context.character:FindFirstChild("HurtboxBody")
+	if hurtboxBody then
+		hurtboxBody.CanQuery = false
+	end
+	self:_setCharacterTransparency(0.5)
+
+	self.context.machine:SetState("FreeFall")
+	self.animationController:PlayAnimation("Dodge", 0.05)
+
+	-- Restaurar i-frames después de 0.3s
+	task.delay(0.3, function()
+		if not self.context.isInFreeFall then
+			return
+		end
+
+		local hb = self.context.character:FindFirstChild("HurtboxBody")
+		if hb then
+			hb.CanQuery = true
+		end
+		self:_setCharacterTransparency(0)
+	end)
+
+	return true
+end
+
+-- Flash pulsante que indica que el personaje puede hacer air tech
+function CombatController:_startTechFlash()
+	task.spawn(function()
+		while self.context.canAirTech and self.context.isInAirHitstun do
+			-- Flash rápido: alternar transparencia
+			self:_setCharacterTransparency(0.4)
+			task.wait(0.08)
+			if not self.context.canAirTech or not self.context.isInAirHitstun then
+				break
+			end
+			self:_setCharacterTransparency(0)
+			task.wait(0.08)
+		end
+		-- Asegurar que quede opaco al terminar
+		if not self.context.isInFreeFall then
+			self:_setCharacterTransparency(0)
+		end
+	end)
+end
+
+-- =============================================
 -- STATE REGISTRATION
 -- =============================================
 
@@ -559,8 +764,9 @@ function CombatController:RegisterStates(machine)
 			end
 
 			-- Suspender gravedad durante ataques aéreos (inmediato)
-			-- Para AttackJump, se suspende después de que el salto se aplique
-			if self.context.isAirborne then
+			-- Para AttackJump, NO suspender aquí — el sistema de AttackJump
+			-- maneja su propio delay de gravedad después de aplicar el impulso
+			if self.context.isAirborne and not attack.AttackJump then
 				self.context.suspendAirGravity = true
 				-- Congelar velocidad Y actual al iniciar el ataque aéreo
 				local vel = self.context.root.AssemblyLinearVelocity
@@ -813,6 +1019,7 @@ function CombatController:RegisterStates(machine)
 			if attack.AttackJump and attack.JumpHeight and attack.JumpHeight > 0 then
 				local jumpFrameStart = attack.JumpFrameStart or 1
 				local jumpHeight = attack.JumpHeight
+				local gravityDelayFrames = attack.JumpGravityDelayFrames or 3
 				local jumpApplied = false
 				local jumpFinished = false
 
@@ -855,7 +1062,6 @@ function CombatController:RegisterStates(machine)
 
 						-- Suspender gravedad después de aplicar el impulso del salto
 						-- Esperar unos frames para que el personaje suba antes de congelar
-						local gravityDelayFrames = 3
 						local gravityFrameCount = 0
 						local gravityConn
 						gravityConn = RunService.RenderStepped:Connect(function()
@@ -1122,6 +1328,33 @@ function CombatController:RegisterStates(machine)
 	})
 
 	-- =============================================
+	-- 🪂 FREEFALL STATE (post air-tech, control limitado)
+	-- =============================================
+	machine:AddState("FreeFall", {
+		Enter = function()
+			self.context.isInFreeFall = true
+			self.context.attackLocked = true
+		end,
+
+		Update = function()
+			-- Movimiento limitado: usa freeFallSpeed en vez de airMoveSpeed completo
+			local dir = 0
+			if self.context.inputLeft then
+				dir = dir - 1
+			end
+			if self.context.inputRight then
+				dir = dir + 1
+			end
+			self.context.moveDirection = dir
+		end,
+
+		Exit = function()
+			self.context.isInFreeFall = false
+			self.context.attackLocked = false
+		end,
+	})
+
+	-- =============================================
 	-- 💀 KNOCKDOWN STATES
 	-- =============================================
 	machine:AddState("Knockdown", {
@@ -1173,7 +1406,11 @@ function CombatController:ResolvePostActionState(forceAnimationRefresh)
 	end
 
 	if self.context.isAirborne then
-		self.context.machine:SetState("Airborne")
+		if self.context.isInFreeFall then
+			self.context.machine:SetState("FreeFall")
+		else
+			self.context.machine:SetState("Airborne")
+		end
 		return
 	end
 

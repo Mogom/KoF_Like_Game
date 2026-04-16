@@ -26,6 +26,25 @@ local function isTrainingDummy(model)
 	return model.Name == "Enemy" or model.Name == "TrainingDummy" or model:GetAttribute("IsTrainingDummy") == true
 end
 
+local function usesClassicHealth(character)
+	if not character or not character:IsA("Model") then
+		return false
+	end
+
+	local ownerPlayer = Players:GetPlayerFromCharacter(character)
+	local mode = nil
+
+	if ownerPlayer then
+		mode = ownerPlayer:GetAttribute("GameMode") or GameModeManager.GetPlayerMode(ownerPlayer)
+	end
+
+	if not mode then
+		mode = character:GetAttribute("GameMode")
+	end
+
+	return mode == "Classic"
+end
+
 ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter, attackData)
 	if not victimCharacter or not victimCharacter:IsA("Model") then
 		warn("❌ Invalid victimCharacter")
@@ -92,13 +111,20 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 		return
 	end
 
-	victimHumanoid:TakeDamage(damage)
+	local currentDamagePercent = victimCharacter:GetAttribute("DamagePercent") or 0
+	local newDamagePercent = currentDamagePercent + damage
+	victimCharacter:SetAttribute("DamagePercent", newDamagePercent)
+
+	if usesClassicHealth(victimCharacter) then
+		victimHumanoid:TakeDamage(damage)
+	end
 
 	local currentHitCounter = victimCharacter:GetAttribute("HitCounter") or 0
 	victimCharacter:SetAttribute("HitCounter", currentHitCounter + 1)
 
 	local hitResult = {
 		Damage = damage,
+		DamagePercent = newDamagePercent,
 		HitType = attackData.HitType or "Light",
 		HitAnimation = attackData.HitAnimation or "HurtLight",
 		HitstunDuration = attackData.HitstunDuration or 0.25,
@@ -110,6 +136,9 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 		ChipDamage = attackData.ChipDamage or 0,
 		Knockdown = attackData.Knockdown or false,
 		LaunchForce = attackData.LaunchForce or 0,
+		LaunchAngle = attackData.LaunchAngle or 0,
+		BaseKnockback = attackData.BaseKnockback or 0,
+		KnockbackGrowth = attackData.KnockbackGrowth or 0,
 		AttackerPositionX = attackerRoot.Position.X,
 		VictimPositionX = victimRoot.Position.X,
 	}
@@ -122,6 +151,7 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 
 	local currentHitResultId = victimCharacter:GetAttribute("HitResultId") or 0
 	victimCharacter:SetAttribute("LastHitDamage", hitResult.Damage)
+	victimCharacter:SetAttribute("LastDamagePercent", hitResult.DamagePercent)
 	victimCharacter:SetAttribute("LastHitType", hitResult.HitType)
 	victimCharacter:SetAttribute("LastHitAnimation", hitResult.HitAnimation)
 	victimCharacter:SetAttribute("LastHitstunDuration", hitResult.HitstunDuration)
@@ -133,6 +163,9 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 	victimCharacter:SetAttribute("LastChipDamage", hitResult.ChipDamage)
 	victimCharacter:SetAttribute("LastKnockdown", hitResult.Knockdown)
 	victimCharacter:SetAttribute("LastLaunchForce", hitResult.LaunchForce)
+	victimCharacter:SetAttribute("LastLaunchAngle", hitResult.LaunchAngle)
+	victimCharacter:SetAttribute("LastBaseKnockback", hitResult.BaseKnockback)
+	victimCharacter:SetAttribute("LastKnockbackGrowth", hitResult.KnockbackGrowth)
 	victimCharacter:SetAttribute("LastAttackerPositionX", hitResult.AttackerPositionX)
 	victimCharacter:SetAttribute("LastVictimPositionX", hitResult.VictimPositionX)
 	victimCharacter:SetAttribute("HitResultId", currentHitResultId + 1)

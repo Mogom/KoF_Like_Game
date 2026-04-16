@@ -56,8 +56,8 @@ end
 -- Colores de las barras de vida
 local P1_BAR_COLOR = Color3.fromRGB(40, 200, 80) -- Verde para P1
 local P2_BAR_COLOR = Color3.fromRGB(40, 200, 80) -- Verde para P2
-local LOW_HEALTH_COLOR = Color3.fromRGB(230, 200, 20) -- Amarillo (< 40%)
-local CRITICAL_HEALTH_COLOR = Color3.fromRGB(220, 40, 40) -- Rojo (< 20%)
+local _LOW_HEALTH_COLOR = Color3.fromRGB(230, 200, 20) -- Reservado para modo clásico
+local _CRITICAL_HEALTH_COLOR = Color3.fromRGB(220, 40, 40) -- Reservado para modo clásico
 local GHOST_BAR_COLOR = Color3.fromRGB(220, 50, 50) -- Rojo fantasma (daño reciente)
 local HEALTH_BG_COLOR = Color3.fromRGB(30, 30, 35) -- Fondo de la barra
 
@@ -93,6 +93,11 @@ local PORTRAIT_BG = Color3.fromRGB(25, 25, 35)
 local COMBO_TEXT_SIZE = 50
 local COMBO_LABEL_SIZE = 20
 local COMBO_COLOR = Color3.fromRGB(255, 200, 0)
+local PERCENT_FILL_MAX = 200
+local PERCENT_SAFE_COLOR = Color3.fromRGB(210, 210, 220)
+local PERCENT_WARNING_COLOR = Color3.fromRGB(255, 210, 80)
+local PERCENT_DANGER_COLOR = Color3.fromRGB(255, 120, 60)
+local PERCENT_CRITICAL_COLOR = Color3.fromRGB(255, 70, 70)
 
 -- ============================================
 -- CONSTRUCTOR
@@ -136,9 +141,11 @@ function GameHUDComponent.new(parent, player)
 	self.isFlashing = false
 	self.opponentHumanoid = nil
 	self.opponentConnection = nil
+	self.playerPercentConnection = nil
 
 	local success, err = pcall(function()
 		self:render(parent)
+		self:_setupPlayerHealth()
 		self:_setupPlayerStocks()
 		self:_setupOpponentHealth()
 	end)
@@ -382,7 +389,7 @@ function GameHUDComponent:_createHealthBar(props)
 		Size = UDim2.new(0, HEALTH_BAR_WIDTH, 0, HEALTH_BAR_HEIGHT),
 		AnchorPoint = props.anchorPoint,
 		BackgroundColor3 = HEALTH_BG_COLOR,
-		Visible = false,
+		Visible = true,
 		BorderSizePixel = 0,
 		Parent = props.parent,
 		Children = {
@@ -401,7 +408,7 @@ function GameHUDComponent:_createHealthBar(props)
 	local ghostFill = UIBuilder.Frame({
 		Name = props.name .. "GhostFill",
 		Position = UDim2.new(ghostAnchorX, ghostPosX, 0, 3),
-		Size = UDim2.new(1, -6, 1, -6),
+		Size = UDim2.new(0, 0, 1, -6),
 		AnchorPoint = Vector2.new(ghostAnchorX, 0),
 		BackgroundColor3 = GHOST_BAR_COLOR,
 		BorderSizePixel = 0,
@@ -418,7 +425,7 @@ function GameHUDComponent:_createHealthBar(props)
 	local healthFill = UIBuilder.Frame({
 		Name = props.name .. "HealthFill",
 		Position = UDim2.new(fillAnchorX, fillPosX, 0, 3),
-		Size = UDim2.new(1, -6, 1, -6),
+		Size = UDim2.new(0, 0, 1, -6),
 		AnchorPoint = Vector2.new(fillAnchorX, 0),
 		BackgroundColor3 = props.barColor,
 		BorderSizePixel = 0,
@@ -447,7 +454,7 @@ function GameHUDComponent:_createHealthBar(props)
 		Name = props.name .. "HealthText",
 		Size = UDim2.new(1, 0, 1, 0),
 		BackgroundTransparency = 1,
-		Text = "",
+		Text = "0%",
 		TextColor3 = Color3.fromRGB(255, 255, 255),
 		TextSize = 16,
 		Font = Enum.Font.GothamBold,
@@ -512,15 +519,20 @@ end
 
 -- Conecta listener de HP del jugador local
 function GameHUDComponent:_setupPlayerHealth()
-	if not self.humanoid then
+	if self.playerPercentConnection then
+		self.playerPercentConnection:Disconnect()
+		self.playerPercentConnection = nil
+	end
+
+	if not self.character then
 		return
 	end
 
-	self.humanoid.HealthChanged:Connect(function(health)
-		self:updatePlayerHealth(health)
+	self.playerPercentConnection = self.character:GetAttributeChangedSignal("DamagePercent"):Connect(function()
+		self:updatePlayerHealth(self.character:GetAttribute("DamagePercent") or 0)
 	end)
 
-	self:updatePlayerHealth(self.humanoid.Health)
+	self:updatePlayerHealth(self.character:GetAttribute("DamagePercent") or 0)
 end
 
 -- Busca y conecta listener de HP del oponente
@@ -542,7 +554,7 @@ function GameHUDComponent:_setupOpponentHealth()
 	end)
 end
 
--- Busca el oponente (dummy o jugador) y conecta su HP
+-- Busca el oponente (dummy o jugador) y conecta su porcentaje
 function GameHUDComponent:_findAndBindOpponent()
 	-- Primero buscar dummy
 	local dummy = workspace:FindFirstChild("Enemy") or workspace:FindFirstChild("TrainingDummy")
@@ -567,7 +579,7 @@ function GameHUDComponent:_findAndBindOpponent()
 	end
 end
 
--- Conecta el humanoid del oponente al HUD
+-- Conecta el personaje del oponente al HUD
 function GameHUDComponent:_bindOpponentHumanoid(humanoid, name)
 	-- Desconectar anterior si existe
 	if self.opponentConnection then
@@ -582,6 +594,11 @@ function GameHUDComponent:_bindOpponentHumanoid(humanoid, name)
 		self.p2NameLabel.Text = string.upper(name)
 	end
 
+	self.opponentConnection = self.opponentCharacter:GetAttributeChangedSignal("DamagePercent"):Connect(function()
+		self:updateOpponentHealth(self.opponentCharacter:GetAttribute("DamagePercent") or 0)
+	end)
+
+	self:updateOpponentHealth(self.opponentCharacter:GetAttribute("DamagePercent") or 0)
 	self:_bindOpponentStocks(self.opponentCharacter)
 end
 
@@ -675,6 +692,9 @@ function GameHUDComponent:_setupPlayerStocks()
 		task.defer(function()
 			if character and character.Parent then
 				self:_bindPlayerStocks(character)
+				self.character = character
+				self.humanoid = character:FindFirstChildOfClass("Humanoid")
+				self:_setupPlayerHealth()
 			end
 		end)
 	end)
@@ -710,16 +730,19 @@ function GameHUDComponent:_updateHealthBar(health, maxHealth, fill, ghost, text,
 		return
 	end
 
-	local percentage = math.clamp(health / maxHealth, 0, 1)
+	local percentValue = math.max(0, health or 0)
+	local fillRatio = math.clamp(percentValue / PERCENT_FILL_MAX, 0, 1)
 
-	-- Determinar color según porcentaje
+	-- Determinar color según daño acumulado
 	local barColor
-	if percentage > 0.4 then
-		barColor = isP1 and P1_BAR_COLOR or P2_BAR_COLOR
-	elseif percentage > 0.2 then
-		barColor = LOW_HEALTH_COLOR
+	if percentValue < 50 then
+		barColor = PERCENT_SAFE_COLOR
+	elseif percentValue < 100 then
+		barColor = PERCENT_WARNING_COLOR
+	elseif percentValue < 150 then
+		barColor = PERCENT_DANGER_COLOR
 	else
-		barColor = CRITICAL_HEALTH_COLOR
+		barColor = PERCENT_CRITICAL_COLOR
 		if isP1 then
 			self:_startCriticalFlash()
 		end
@@ -727,7 +750,7 @@ function GameHUDComponent:_updateHealthBar(health, maxHealth, fill, ghost, text,
 
 	-- Animar barra principal
 	UIBuilder.tween(fill, FILL_SPEED, {
-		Size = UDim2.new(percentage, -6, 1, -6),
+		Size = UDim2.new(fillRatio, -6, 1, -6),
 		BackgroundColor3 = barColor,
 	}, Enum.EasingStyle.Quad)
 
@@ -736,14 +759,15 @@ function GameHUDComponent:_updateHealthBar(health, maxHealth, fill, ghost, text,
 		task.wait(GHOST_DELAY)
 		if ghost and ghost.Parent then
 			UIBuilder.tween(ghost, GHOST_SPEED, {
-				Size = UDim2.new(percentage, -6, 1, -6),
+				Size = UDim2.new(fillRatio, -6, 1, -6),
 			}, Enum.EasingStyle.Quad)
 		end
 	end)
 
 	-- Actualizar texto
 	if text then
-		text.Text = math.floor(percentage * 100) .. "%"
+		text.Text = string.format("%d%%", math.floor(percentValue + 0.5))
+		text.TextColor3 = barColor
 	end
 end
 
@@ -828,6 +852,11 @@ function GameHUDComponent:destroy()
 	if self.characterAddedConnection then
 		self.characterAddedConnection:Disconnect()
 		self.characterAddedConnection = nil
+	end
+
+	if self.playerPercentConnection then
+		self.playerPercentConnection:Disconnect()
+		self.playerPercentConnection = nil
 	end
 
 	self:_disconnectConnections(self.playerStockConnections)

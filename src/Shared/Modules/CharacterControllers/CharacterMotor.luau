@@ -77,6 +77,20 @@ function CharacterMotor.new(context, animationController)
 	self.context.dodgeDirection = 0 -- dirección del dodge (-1, 0, 1)
 
 	-- =============================================
+	-- 🎯 DIRECTIONAL INFLUENCE (DI)
+	-- =============================================
+	self.context.diStrength = 0.30 -- 30% de control durante air hitstun
+
+	-- =============================================
+	-- 🪂 AIR TECH / RECOVERY
+	-- =============================================
+	self.context.canAirTech = false -- Se activa cuando es techeable
+	self.context.airTechCooldown = 0 -- Cooldown actual restante
+	self.context.airTechCooldownMax = 2.5 -- Cooldown entre air techs (segundos)
+	self.context.isInFreeFall = false -- Estado post-tech con control limitado
+	self.context.freeFallSpeed = 0 -- Velocidad reducida en FreeFall
+
+	-- =============================================
 	-- ⚙️ CONFIGURACIÓN DE MOVIMIENTO AÉREO
 	-- =============================================
 	self.context.allowAirAttackMovement = true -- Si true: ataques aéreos permiten avance/retroceso
@@ -294,6 +308,8 @@ function CharacterMotor:UpdateAirState()
 		self.context.juggleCount = 0
 		self.context.hasDoubleJumped = false -- Resetear doble salto al aterrizar
 		self.context.suspendAirGravity = false -- Restaurar gravedad al aterrizar
+		self.context.canAirTech = false -- Limpiar tech al aterrizar
+		self.context.isInFreeFall = false -- Salir de FreeFall al aterrizar
 
 		if self.context.isKnockedDown then
 			return
@@ -301,8 +317,8 @@ function CharacterMotor:UpdateAirState()
 
 		local currentState = self.context.machine:GetState()
 
-		if currentState == "Airborne" then
-			-- Aterrizaje normal (sin ataque)
+		if currentState == "Airborne" or currentState == "FreeFall" then
+			-- Aterrizaje normal (sin ataque) o desde FreeFall
 			self.context.attackLocked = false
 			self.context.currentAttack = nil
 			self.context.currentAnimationName = nil
@@ -510,6 +526,15 @@ function CharacterMotor:UpdateWalkMovement(dt)
 			return
 		end
 
+		-- 🪂 FreeFall: movimiento limitado post air-tech
+		if self.context.isInFreeFall then
+			local freeFallDelta = self.context.moveDirection
+				* (self.context.freeFallSpeed or self.context.airMoveSpeed * 0.5)
+				* dt
+			self:MoveCurrentX(freeFallDelta)
+			return
+		end
+
 		-- 🎯 Si ataca en el aire y allowAirAttackMovement = true, permitir movimiento
 		if self.context.attackLocked then
 			if not self.context.allowAirAttackMovement then
@@ -553,6 +578,7 @@ end
 
 -- Aplica pushVelocityX cada frame con decay lineal hasta detenerse
 function CharacterMotor:UpdatePushback()
+	-- Horizontal pushback (X)
 	if math.abs(self.context.pushVelocityX or 0) > 0.01 then
 		local delta = self.context.pushVelocityX
 		self:MoveCurrentX(delta)
@@ -563,6 +589,22 @@ function CharacterMotor:UpdatePushback()
 		self.context.pushVelocityX = absVel * sign
 	else
 		self.context.pushVelocityX = 0
+	end
+
+	-- Vertical pushback (Y) — knockback direccional
+	if math.abs(self.context.pushVelocityY or 0) > 0.01 then
+		local root = self.context.root
+		if root then
+			local vel = root.AssemblyLinearVelocity
+			root.AssemblyLinearVelocity = Vector3.new(vel.X, self.context.pushVelocityY, vel.Z)
+		end
+
+		local sign = self.context.pushVelocityY >= 0 and 1 or -1
+		local absVel = math.abs(self.context.pushVelocityY)
+		absVel = math.max(0, absVel - (self.context.pushDecayY or 0))
+		self.context.pushVelocityY = absVel * sign
+	else
+		self.context.pushVelocityY = 0
 	end
 end
 
@@ -604,19 +646,31 @@ function CharacterMotor:ApplyPlaneLockAndRotationToOpponent()
 end
 --]]
 
--- Inicia empuje por golpe: velocity = direction * pushback * 0.12, decay = 12%
-function CharacterMotor:ApplyPushReaction(pushback, direction, duration)
-	if pushback <= 0 then
+-- Inicia empuje por golpe: velocity vectorial basada en knockback y ángulo
+-- knockbackX/knockbackY: componentes del knockback ya calculados por CombatController
+function CharacterMotor:ApplyPushReaction(pushback, direction, duration, knockbackY)
+	if pushback <= 0 and (knockbackY or 0) == 0 then
 		return
 	end
 
-	self.context.pushVelocityX = direction * (pushback * 0.12)
-	self.context.pushDecay = math.max(0.01, math.abs(self.context.pushVelocityX) * 0.12)
+	-- Horizontal (X)
+	if pushback > 0 then
+		self.context.pushVelocityX = direction * (pushback * 0.12)
+		self.context.pushDecay = math.max(0.01, math.abs(self.context.pushVelocityX) * 0.12)
+	end
+
+	-- Vertical (Y) — knockback direccional
+	if knockbackY and knockbackY ~= 0 then
+		self.context.pushVelocityY = knockbackY
+		self.context.pushDecayY = math.max(0.01, math.abs(knockbackY) * 0.08)
+	end
 end
 
 function CharacterMotor:StopPushReaction()
 	self.context.pushVelocityX = 0
 	self.context.pushDecay = 0
+	self.context.pushVelocityY = 0
+	self.context.pushDecayY = 0
 end
 
 -- Inicia dodge direccional con i-frames. Retorna true si se activó
@@ -652,9 +706,14 @@ end
 
 -- Decrementa cooldown del dodge y aplica movimiento si está activo
 function CharacterMotor:UpdateDodge(dt)
-	-- Cooldown
+	-- Cooldown del dodge
 	if self.context.dodgeCooldown > 0 then
 		self.context.dodgeCooldown = math.max(0, self.context.dodgeCooldown - dt)
+	end
+
+	-- Cooldown del air tech
+	if (self.context.airTechCooldown or 0) > 0 then
+		self.context.airTechCooldown = math.max(0, self.context.airTechCooldown - dt)
 	end
 
 	-- Movimiento durante dodge
@@ -710,6 +769,25 @@ function CharacterMotor:Update(dt)
 	end
 
 	if isInHitReaction then
+		-- =============================================
+		-- 🎯 DIRECTIONAL INFLUENCE (DI) durante air hitstun
+		-- El jugador puede influir su trayectoria con WASD (~30% control)
+		-- =============================================
+		if self.context.isInAirHitstun and not HitstopService:IsInHitstop(self.context.character) then
+			local diInput = 0
+			if self.context.inputLeft then
+				diInput = diInput - 1
+			end
+			if self.context.inputRight then
+				diInput = diInput + 1
+			end
+
+			if diInput ~= 0 then
+				local diForce = diInput * self.context.airMoveSpeed * (self.context.diStrength or 0.30) * dt
+				self:MoveCurrentX(diForce)
+			end
+		end
+
 		-- Seguir la posición autoritativa del atacante sin escribir CFrame
 		self:UpdateDodge(dt)
 		return
