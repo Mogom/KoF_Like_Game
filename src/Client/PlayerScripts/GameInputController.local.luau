@@ -63,6 +63,7 @@ local KeyMap = {
 	[Enum.UserInputType.MouseButton1] = "Punch",
 	[Enum.UserInputType.MouseButton2] = "HeavyPunch",
 	[Enum.KeyCode.LeftShift] = "Dodge",
+	[Enum.KeyCode.F] = "Dodge",
 
 	[Enum.KeyCode.ButtonX] = "Punch",
 	[Enum.KeyCode.ButtonB] = "HeavyPunch",

@@ -73,8 +73,9 @@ function CharacterMotor.new(context, animationController)
 	self.context.dodgeCooldown = 0
 	self.context.dodgeCooldownMax = 1.0 -- segundos entre dodges
 	self.context.dodgeDuration = 0.4 -- duración de invulnerabilidad
-	self.context.dodgeSpeed = 30 -- velocidad del dodge direccional
+	self.context.dodgeSpeed = 24 -- velocidad del dodge direccional
 	self.context.dodgeDirection = 0 -- dirección del dodge (-1, 0, 1)
+	self.context.dodgeDistance = 6 -- distancia total aproximada del dash
 
 	-- =============================================
 	-- 🎯 DIRECTIONAL INFLUENCE (DI)
@@ -691,7 +692,7 @@ function CharacterMotor:Dodge()
 	end
 
 	-- Capturar dirección ANTES de resetear moveDirection
-	local dir = self.context.moveDirection or 0
+	local dir = self.context.currentDirection == "L" and -1 or 1
 
 	self.context.isDodging = true
 	self.context.dodgeCooldown = self.context.dodgeCooldownMax
@@ -718,7 +719,10 @@ function CharacterMotor:UpdateDodge(dt)
 
 	-- Movimiento durante dodge
 	if self.context.isDodging and math.abs(self.context.dodgeDirection or 0) > 0.01 then
-		local dodgeDelta = self.context.dodgeDirection * self.context.dodgeSpeed * dt
+		local dodgeSpeed = self.context.dodgeSpeed or 24
+		local dodgeDuration = math.max(0.001, self.context.dodgeDuration or 0.4)
+		local dodgeDistance = self.context.dodgeDistance or 6
+		local dodgeDelta = self.context.dodgeDirection * math.max(dodgeSpeed, dodgeDistance / dodgeDuration) * dt
 		self:MoveCurrentX(dodgeDelta)
 	end
 end

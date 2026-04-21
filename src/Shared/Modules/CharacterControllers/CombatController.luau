@@ -1274,8 +1274,15 @@ function CombatController:RegisterStates(machine)
 				hurtboxBody.CanQuery = false
 			end
 
-			-- Efecto visual: semi-transparente durante dodge
-			self:_setCharacterTransparency(0.6)
+			-- Efecto visual: brillo global reutilizable durante dodge
+			VFXService.CharacterFlash(self.context.character, {
+				Name = "DodgeFlashHighlight",
+				Color = Color3.fromRGB(215, 235, 255),
+				FillTransparency = 0.72,
+				OutlineTransparency = 0.18,
+				Duration = self.context.dodgeDuration or 0.4,
+			})
+			self:_setCharacterTransparency(0.2)
 
 			local dodgeDuration = self.context.dodgeDuration or 0.4
 
@@ -1295,6 +1302,10 @@ function CombatController:RegisterStates(machine)
 
 				-- Restaurar transparencia
 				self:_setCharacterTransparency(0)
+				local dodgeFlash = self.context.character:FindFirstChild("DodgeFlashHighlight")
+				if dodgeFlash then
+					dodgeFlash:Destroy()
+				end
 
 				if _G.ForceResolveMovement then
 					_G.ForceResolveMovement()

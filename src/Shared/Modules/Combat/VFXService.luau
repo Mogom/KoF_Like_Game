@@ -680,6 +680,10 @@ end
 -- =============================================
 -- HurtFlash: overlay de color sólido sobre todo el personaje (estilo KOF/SF)
 -- Usa Highlight de Roblox para pintar el modelo completo.
+-- CharacterFlash / HurtFlash: overlay de color sólido sobre todo el personaje.
+-- Usa Highlight de Roblox para pintar el modelo completo.
+-- CharacterFlash es reutilizable para dodge, hit, parry, etc.
+-- HurtFlash mantiene la API anterior y usa CharacterFlash internamente.
 -- Pulsa visible/invisible cada TOGGLE_INTERVAL frames durante hitstop.
 -- =============================================
 local HURTFLASH_COLOR = Color3.fromRGB(187, 187, 187)
@@ -693,6 +697,8 @@ local ATTACKFLASH_DEFAULT_COLOR = Color3.fromRGB(255, 60, 60)
 local ATTACKFLASH_DEFAULT_FILL_TRANSPARENCY = 0.2
 local ATTACKFLASH_DEFAULT_OUTLINE_TRANSPARENCY = 0.65
 local ATTACKFLASH_DEFAULT_DURATION = 0.08
+local CHARACTERFLASH_DEFAULT_DURATION = 0.08
+local CHARACTERFLASH_DEFAULT_DEPTH_MODE = Enum.HighlightDepthMode.Occluded
 
 local NAMED_COLORS = {
 	red = Color3.fromRGB(255, 60, 60),
@@ -739,67 +745,92 @@ local function parseFlashColor(value)
 
 	return ATTACKFLASH_DEFAULT_COLOR
 end
-
-local function cleanupHurtFlash(character)
-	local existing = character:FindFirstChild("HurtFlashHighlight")
+local function cleanupCharacterFlash(character, highlightName)
+	highlightName = highlightName or "CharacterFlashHighlight"
+	local existing = character:FindFirstChild(highlightName)
 	if existing then
 		existing:Destroy()
 	end
 end
 
-local function createHurtFlashHighlight(character)
-	cleanupHurtFlash(character)
+local function createCharacterFlashHighlight(character, flashConfig)
+	flashConfig = flashConfig or {}
+	local highlightName = flashConfig.Name or "CharacterFlashHighlight"
+	cleanupCharacterFlash(character, highlightName)
+
+	local fillColor = parseFlashColor(flashConfig.FillColor or flashConfig.Color or HURTFLASH_COLOR)
+	local outlineColor = parseFlashColor(flashConfig.OutlineColor or flashConfig.Color or HURTFLASH_OUTLINE_COLOR)
+	local fillTransparency = flashConfig.FillTransparency
+	if typeof(fillTransparency) ~= "number" then
+		fillTransparency = HURTFLASH_FILL_TRANSPARENCY
+	end
+	local outlineTransparency = flashConfig.OutlineTransparency
+	if typeof(outlineTransparency) ~= "number" then
+		outlineTransparency = HURTFLASH_OUTLINE_TRANSPARENCY
+	end
 
 	local highlight = Instance.new("Highlight")
-	highlight.Name = "HurtFlashHighlight"
-	highlight.FillColor = HURTFLASH_COLOR
-	highlight.FillTransparency = HURTFLASH_FILL_TRANSPARENCY
-	highlight.OutlineColor = HURTFLASH_OUTLINE_COLOR
-	highlight.OutlineTransparency = HURTFLASH_OUTLINE_TRANSPARENCY
-	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+	highlight.Name = highlightName
+	highlight.FillColor = fillColor
+	highlight.FillTransparency = math.clamp(fillTransparency, 0, 1)
+	highlight.OutlineColor = outlineColor
+	highlight.OutlineTransparency = math.clamp(outlineTransparency, 0, 1)
+	highlight.DepthMode = flashConfig.DepthMode or CHARACTERFLASH_DEFAULT_DEPTH_MODE
 	highlight.Adornee = character
 	highlight.Parent = character
 
 	return highlight
 end
 
-function VFXService.HurtFlash(character, hitstopFrames)
+function VFXService.CharacterFlash(character, flashConfig)
 	if not character then
 		return
 	end
 
-	hitstopFrames = hitstopFrames or 0
+	flashConfig = flashConfig or {}
+	local hitstopFrames = flashConfig.HitstopFrames or 0
+	local duration = flashConfig.Duration
+	if typeof(duration) ~= "number" or duration <= 0 then
+		duration = CHARACTERFLASH_DEFAULT_DURATION
+	end
+	local blink = flashConfig.Blink
+	if typeof(blink) ~= "boolean" then
+		blink = HURTFLASH_ENABLE_BLINK
+	end
+	local blinkIntervalFrames = flashConfig.BlinkIntervalFrames
+	if typeof(blinkIntervalFrames) ~= "number" or blinkIntervalFrames <= 0 then
+		blinkIntervalFrames = HURTFLASH_BLINK_INTERVAL_FRAMES
+	end
+
+	local highlight = createCharacterFlashHighlight(character, flashConfig)
 
 	if hitstopFrames <= 0 then
-		local highlight = createHurtFlashHighlight(character)
-		task.delay(0.08, function()
+		task.delay(duration, function()
 			if highlight and highlight.Parent then
 				highlight:Destroy()
 			end
 		end)
-		return
+		return highlight
 	end
-
-	local highlight = createHurtFlashHighlight(character)
 
 	local frameCounter = 0
 	local totalFrames = 0
 	local isVisible = true
+	local fillTransparency = highlight.FillTransparency
+	local outlineTransparency = highlight.OutlineTransparency
 
 	local connection
 	connection = RunService.RenderStepped:Connect(function()
 		totalFrames += 1
 
-		if HURTFLASH_ENABLE_BLINK then
+		if blink then
 			frameCounter += 1
-
-			if frameCounter >= HURTFLASH_BLINK_INTERVAL_FRAMES then
+			if frameCounter >= blinkIntervalFrames then
 				frameCounter = 0
 				isVisible = not isVisible
-
 				if highlight and highlight.Parent then
-					highlight.FillTransparency = isVisible and HURTFLASH_FILL_TRANSPARENCY or 1
-					highlight.OutlineTransparency = isVisible and HURTFLASH_OUTLINE_TRANSPARENCY or 1
+					highlight.FillTransparency = isVisible and fillTransparency or 1
+					highlight.OutlineTransparency = isVisible and outlineTransparency or 1
 				end
 			end
 		end
@@ -811,6 +842,26 @@ function VFXService.HurtFlash(character, hitstopFrames)
 			end
 		end
 	end)
+
+	return highlight
+end
+
+function VFXService.HurtFlash(character, hitstopFrames)
+	if not character then
+		return
+	end
+
+	VFXService.CharacterFlash(character, {
+		Name = "HurtFlashHighlight",
+		FillColor = HURTFLASH_COLOR,
+		OutlineColor = HURTFLASH_OUTLINE_COLOR,
+		FillTransparency = HURTFLASH_FILL_TRANSPARENCY,
+		OutlineTransparency = HURTFLASH_OUTLINE_TRANSPARENCY,
+		Duration = 0.08,
+		HitstopFrames = hitstopFrames or 0,
+		Blink = HURTFLASH_ENABLE_BLINK,
+		BlinkIntervalFrames = HURTFLASH_BLINK_INTERVAL_FRAMES,
+	})
 end
 
 function VFXService.AttackLimbFlash(character, limbName, facingDirection, flashConfig, hitstopFrames)
