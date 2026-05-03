@@ -32,6 +32,7 @@ local UtilitiesFolder = Modules:WaitForChild("Utilities")
 local CharacterRegistry = require(CharactersFolder:WaitForChild("CharacterRegistry"))
 local BlastZoneService = require(UtilitiesFolder:WaitForChild("BlastZoneService"))
 local StockManager = require(UtilitiesFolder:WaitForChild("StockManager"))
+local SpawnService = require(UtilitiesFolder:WaitForChild("SpawnService"))
 
 local STOCK_CONFIG = {
 	DefaultStocks = 3,
@@ -65,68 +66,10 @@ local SPAWN_CONFIG = {
 -- ============================================
 
 -- Obtiene el centro y tamaño del BasePlate del mapa actual
-local function getMapBounds(mapName)
-	mapName = mapName or SPAWN_CONFIG.CurrentMap
-
-	local maps = workspace:FindFirstChild("Maps")
-	if not maps then
-		warn("⚠️ [GameMode] Maps folder not found! Create workspace/Maps/Map0/BasePlate")
-		-- Fallback: usar posición 0,5,0 con tamaño 100x1x100
-		return Vector3.new(0, 5, 0), Vector3.new(100, 1, 100)
-	end
-
-	local mapFolder = maps:FindFirstChild(mapName)
-	if not mapFolder then
-		warn("⚠️ [GameMode] Map not found:", mapName, "| Create workspace/Maps/" .. mapName .. "/BasePlate")
-		return Vector3.new(0, 5, 0), Vector3.new(100, 1, 100)
-	end
-
-	local basePlate = mapFolder:FindFirstChild("BasePlate")
-	if not basePlate then
-		warn("⚠️ [GameMode] BasePlate not found in map:", mapName, "| Create a Part named 'BasePlate' inside")
-		return Vector3.new(0, 5, 0), Vector3.new(100, 1, 100)
-	end
-
-	local center = basePlate.Position
-	local size = basePlate.Size
-
-	print("✅ [Map] Using", mapName, "| Center:", center, "| Size:", size)
-	return center, size
-end
-
 -- Calcula posiciones de spawn distribuidas horizontalmente desde el centro
 -- Todos en el mismo eje Z (juego 2D)
 local function calculateSpawnPositions(playerCount, mapName)
-	local center, size = getMapBounds(mapName)
-	local positions = {}
-
-	-- El eje Z es fijo (centro del mapa) - CRÍTICO para 2D
-	local fixedZ = center.Z
-
-	-- Altura de spawn (encima del BasePlate)
-	local spawnY = center.Y + (size.Y / 2) + SPAWN_CONFIG.SpawnHeight
-
-	-- Calcular distancia total necesaria
-	local totalWidth = SPAWN_CONFIG.BaseDistance * (playerCount - 1)
-
-	-- Asegurar que no exceda el mapa
-	local maxWidth = size.X * SPAWN_CONFIG.MapWidthUsage
-	if totalWidth > maxWidth then
-		totalWidth = maxWidth
-	end
-
-	-- Posición inicial (izquierda del centro)
-	local startX = center.X - (totalWidth / 2)
-	local spacing = playerCount > 1 and (totalWidth / (playerCount - 1)) or 0
-
-	for i = 1, playerCount do
-		local posX = startX + (spacing * (i - 1))
-		table.insert(positions, Vector3.new(posX, spawnY, fixedZ))
-	end
-
-	print("📍 [Spawn] Calculated", playerCount, "positions from center:", center, "| Z fixed at:", fixedZ)
-
-	return positions
+	return SpawnService.CalculateSpawnPositions(playerCount, mapName or SPAWN_CONFIG.CurrentMap)
 end
 
 -- Spawnea un jugador en una posición específica
@@ -362,110 +305,12 @@ local function findDummy()
 end
 
 local function setReplicatedSpawnState(character, position, facingRight)
-	if not character then
-		return
-	end
-
-	character:SetAttribute("ReplicatedSpawnX", position.X)
-	character:SetAttribute("ReplicatedSpawnY", position.Y)
-	character:SetAttribute("ReplicatedSpawnZ", position.Z)
-	character:SetAttribute("ReplicatedSpawnFacingRight", facingRight == true)
-	character:SetAttribute("ReplicatedSpawnVersion", os.clock())
+	SpawnService.SetReplicatedSpawnState(character, position, facingRight)
 end
 
 -- Mueve un character/dummy a una posición específica
 local function moveCharacterToPosition(character, position, facingRight, isDummy)
-	if not character then
-		warn("⚠️ [Move] No character provided")
-		return false
-	end
-
-	-- Esperar a que el character esté lista
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if not root then
-		root = character:WaitForChild("HumanoidRootPart", 5)
-	end
-
-	if not root then
-		warn("⚠️ [Move] HumanoidRootPart not found in", character.Name)
-		return false
-	end
-
-	-- Para NPCs/dummies, desanclar TODAS las partes para que repliquen
-	if isDummy then
-		for _, part in ipairs(character:GetDescendants()) do
-			if part:IsA("BasePart") then
-				part.Anchored = false
-			end
-		end
-	else
-		-- Solo desanclar el root para jugadores
-		if root.Anchored then
-			root.Anchored = false
-		end
-	end
-
-	-- Establecer NetworkOwnership al servidor para garantizar el teleport
-	pcall(function()
-		root:SetNetworkOwner(nil)
-	end)
-
-	-- Para dummies, establecer ownership de todas las partes
-	if isDummy then
-		for _, part in ipairs(character:GetDescendants()) do
-			if part:IsA("BasePart") and not part.Anchored then
-				pcall(function()
-					part:SetNetworkOwner(nil)
-				end)
-			end
-		end
-	end
-
-	-- Detener cualquier movimiento actual
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-	end
-
-	-- facingRight = true mira hacia +X, false mira hacia -X
-	local rotation = facingRight and math.rad(-90) or math.rad(90)
-
-	-- Usar PivotTo para mover todo el modelo
-	local targetCFrame = CFrame.new(position) * CFrame.Angles(0, rotation, 0)
-	setReplicatedSpawnState(character, position, facingRight)
-	character:PivotTo(targetCFrame)
-
-	-- También establecer CFrame del root directamente
-	root.CFrame = targetCFrame
-
-	-- Asegurar que la velocidad esté en cero
-	root.AssemblyLinearVelocity = Vector3.zero
-	root.AssemblyAngularVelocity = Vector3.zero
-
-	-- Para dummies, también asegurar que todos los parts estén quietos
-	if isDummy then
-		for _, part in ipairs(character:GetDescendants()) do
-			if part:IsA("BasePart") then
-				part.AssemblyLinearVelocity = Vector3.zero
-				part.AssemblyAngularVelocity = Vector3.zero
-			end
-		end
-	end
-
-	-- Devolver ownership al cliente si es un jugador
-	if not isDummy then
-		task.defer(function()
-			local player = Players:GetPlayerFromCharacter(character)
-			if player then
-				pcall(function()
-					root:SetNetworkOwner(player)
-				end)
-			end
-		end)
-	end
-
-	print("📍 [Move] Character", character.Name, "moved to", position, isDummy and "(dummy)" or "(player)")
-	return true
+	return SpawnService.MoveCharacterToPosition(character, position, facingRight, isDummy)
 end
 
 -- ============================================
@@ -640,6 +485,10 @@ function GameModeManager.StartVersus1v1Mode(player)
 				StockManager.RespawnPlayerAt(outPlayer, respawnPos, facing, STOCK_CONFIG.RespawnInvulnerability)
 
 			applySelectedCharacterModel(outPlayer)
+			-- Esperar a que el cliente reciba y procese el nuevo personaje (skin swap)
+			-- antes de disparar SetOpponentEvent, de lo contrario el nuevo CharacterController
+			-- aún no existe en el cliente cuando llega el evento.
+			task.wait(0.5)
 			local finalCharacter = outPlayer.Character or respawned
 			local other = outPlayer == player and opponent or player
 			if finalCharacter and other and other.Character then

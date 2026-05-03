@@ -4,6 +4,7 @@ local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Combat = Modules:WaitForChild("Combat")
 
 local DamageService = require(Combat:WaitForChild("DamageService"))
+local ControllerRegistry = require(Combat:WaitForChild("ControllerRegistry"))
 
 -- Sistema de hitbox: crea Part temporal y detecta colisión con HurtboxBody
 local Hitbox = {}
@@ -50,12 +51,9 @@ function Hitbox:Update()
 
 					DamageService.ApplyHit(self.root.Parent, character, self.attackData)
 
-					-- =============================================
-					-- 🎯 PREDICCIÓN LOCAL: pushback + animación
-					-- inmediata en el oponente (solo para jugadores)
-					-- =============================================
-					if _G.LocalHitPrediction and self.attackData then
-						_G.LocalHitPrediction(character, self.attackData)
+					-- Predicción local: pushback + animación inmediata en el oponente (solo jugadores)
+					if self.attackData then
+						ControllerRegistry.TriggerHitPrediction(character, self.attackData)
 					end
 
 					-- =============================================

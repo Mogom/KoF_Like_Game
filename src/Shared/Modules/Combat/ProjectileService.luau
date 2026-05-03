@@ -7,6 +7,7 @@ local Combat = Modules:WaitForChild("Combat")
 
 local DamageService = require(Combat:WaitForChild("DamageService"))
 local VFXService = require(Combat:WaitForChild("VFXService"))
+local ControllerRegistry = require(Combat:WaitForChild("ControllerRegistry"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local RemoteEvents = Remotes:WaitForChild("Events")
@@ -112,9 +113,7 @@ function ProjectileService.Spawn(root, attackData, dir, characterName)
 						DamageService.ApplyHit(character, victimChar, attackData)
 
 						-- Predicción local (visual inmediato)
-						if _G.LocalHitPrediction then
-							_G.LocalHitPrediction(victimChar, attackData)
-						end
+						ControllerRegistry.TriggerHitPrediction(victimChar, attackData)
 
 						-- Destruir proyectil al impactar
 						proj:Destroy()

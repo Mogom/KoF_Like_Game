@@ -1,4 +1,9 @@
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Modules = ReplicatedStorage:WaitForChild("Modules")
+local Utilities = Modules:WaitForChild("Utilities")
+local SpawnService = require(Utilities:WaitForChild("SpawnService"))
 
 local BlastZoneService = {}
 
@@ -13,24 +18,7 @@ local matches = {}
 local heartbeatConnection = nil
 
 local function getMapBounds(mapName)
-	mapName = mapName or "Map0"
-
-	local maps = workspace:FindFirstChild("Maps")
-	if not maps then
-		return Vector3.new(0, 5, 0), Vector3.new(100, 1, 100)
-	end
-
-	local mapFolder = maps:FindFirstChild(mapName)
-	if not mapFolder then
-		return Vector3.new(0, 5, 0), Vector3.new(100, 1, 100)
-	end
-
-	local basePlate = mapFolder:FindFirstChild("BasePlate")
-	if not basePlate then
-		return Vector3.new(0, 5, 0), Vector3.new(100, 1, 100)
-	end
-
-	return basePlate.Position, basePlate.Size
+	return SpawnService.GetMapBounds(mapName)
 end
 
 local function computeBlastZone(mapName)

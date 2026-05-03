@@ -10,6 +10,7 @@ local Hitbox = require(Combat:WaitForChild("Hitbox"))
 local SoundManager = require(Combat:WaitForChild("SoundManager"))
 local HitstopService = require(Combat:WaitForChild("HitstopService"))
 local VFXService = require(Combat:WaitForChild("VFXService"))
+local ControllerRegistry = require(Combat:WaitForChild("ControllerRegistry"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local RemoteEvents = Remotes:WaitForChild("Events")
@@ -262,9 +263,7 @@ function CombatController:ApplyBlockReaction(hitData)
 
 			self.context.isInBlockstun = false
 
-			if _G.ForceResolveMovement then
-				_G.ForceResolveMovement()
-			end
+			ControllerRegistry.ForceResolveMovement()
 
 			if self.context.motor and self.context.motor._updateBlockState then
 				self.context.motor:_updateBlockState()
@@ -548,9 +547,7 @@ function CombatController:_applyPostHitstopPushback(
 
 		self.context.attackLocked = false
 
-		if _G.ForceResolveMovement then
-			_G.ForceResolveMovement()
-		end
+		ControllerRegistry.ForceResolveMovement()
 
 		self:ResolvePostActionState(true)
 	end)
@@ -615,9 +612,7 @@ function CombatController:_startWakeup(knockdownId)
 		self.context.attackLocked = false
 		self.context.juggleCount = 0
 
-		if _G.ForceResolveMovement then
-			_G.ForceResolveMovement()
-		end
+		ControllerRegistry.ForceResolveMovement()
 
 		if self.context.motor and self.context.motor._updateBlockState then
 			self.context.motor:_updateBlockState()
@@ -1161,9 +1156,7 @@ function CombatController:RegisterStates(machine)
 				self.context.canCancel = false
 				self.context.suspendAirGravity = false
 
-				if _G.ForceResolveMovement then
-					_G.ForceResolveMovement()
-				end
+				ControllerRegistry.ForceResolveMovement()
 
 				-- Si estamos en el aire, volver a Airborne
 				if self.context.isAirborne then
@@ -1191,68 +1184,6 @@ function CombatController:RegisterStates(machine)
 			self.context.moveDirection = 0
 		end,
 	})
-
-	-- =============================================
-	-- 🛡️ BLOCK STATES
-	-- =============================================
-	--machine:AddState("Block", {
-	--	Enter = function()
-	--		self.animationController:PlayAnimation("Block", 0.05)
-	--	end,
-
-	--	Update = function()
-	--		if self.context.isInBlockstun then
-	--			return
-	--		end
-
-	--		if not self.context.isBlocking then
-	--			if self.context.isCrouchBlocking then
-	--				self.context.machine:SetState("CrouchBlock")
-	--			elseif self.context.isCrouching then
-	--				self.context.machine:SetState("Crouch")
-	--			elseif math.abs(self.context.moveDirection) > 0.01 then
-	--				self.context.machine:SetState("Walk")
-	--			else
-	--				self.context.machine:SetState("Idle")
-	--			end
-	--		end
-	--	end,
-	--})
-
-	--machine:AddState("CrouchBlock", {
-	--	Enter = function()
-	--		self.context.isCrouching = true
-	--		self.animationController:PlayAnimation("CrouchBlock", 0.05)
-
-	--		if self.context.hurtbox and self.context.hurtbox.SetHeightScale then
-	--			self.context.hurtbox:SetHeightScale(0.6)
-	--		end
-	--	end,
-
-	--	Update = function()
-	--		if self.context.isInBlockstun then
-	--			return
-	--		end
-
-	--		if not self.context.isCrouchBlocking then
-	--			if self.context.isBlocking then
-	--				self.context.machine:SetState("Block")
-	--			elseif self.context.isCrouching then
-	--				self.context.machine:SetState("Crouch")
-	--			elseif math.abs(self.context.moveDirection) > 0.01 then
-	--				self.context.machine:SetState("Walk")
-	--			else
-	--				self.context.machine:SetState("Idle")
-	--			end
-	--		end
-	--	end,
-
-	--	Exit = function()
-	--		if self.context.hurtbox and self.context.hurtbox.Reset then
-	--			self.context.hurtbox:Reset()
-	--		end
-	--	end,
-	--})
 
 	-- =============================================
 	-- 💨 DODGE STATE (estilo Brawlhalla)
@@ -1307,9 +1238,7 @@ function CombatController:RegisterStates(machine)
 					dodgeFlash:Destroy()
 				end
 
-				if _G.ForceResolveMovement then
-					_G.ForceResolveMovement()
-				end
+				ControllerRegistry.ForceResolveMovement()
 
 				if self.context.isAirborne then
 					self.context.machine:SetState("Airborne")
@@ -1425,19 +1354,6 @@ function CombatController:ResolvePostActionState(forceAnimationRefresh)
 		return
 	end
 
-	--if self.context.isInBlockstun then
-	--	if self.context.isCrouchBlocking then
-	--		self.context.machine:SetState("CrouchBlock")
-	--	else
-	--		self.context.machine:SetState("Block")
-	--	end
-	--	return
-	--end
-
-	--if self.context.isCrouchBlocking then
-	--	self.context.machine:SetState("CrouchBlock")
-	--elseif self.context.isBlocking then
-	--	self.context.machine:SetState("Block")
 	if self.context.isDodging then
 		return -- Dodge maneja su propia salida
 	end
@@ -1477,11 +1393,6 @@ function CombatController:RequestAttack(type)
 	local inputRight = self.context.inputRight == true
 	local inputDown = self.context.inputDown == true
 	local hasHorizontalInput = inputLeft ~= inputRight
-
-	-- Si estamos bloqueando, no se puede atacar
-	--if state == "Block" or state == "CrouchBlock" then
-	--	return
-	--end
 
 	-- =============================================
 	-- 🦅 ATAQUE AÉREO

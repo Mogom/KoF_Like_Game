@@ -29,6 +29,10 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local _RunService = game:GetService("RunService") -- Reserved for future use
 
+local Modules = ReplicatedStorage:WaitForChild("Modules")
+local Utilities = Modules:WaitForChild("Utilities")
+local SpawnService = require(Utilities:WaitForChild("SpawnService"))
+
 local LobbyManager = {}
 
 -- ============================================
@@ -96,90 +100,15 @@ local LobbyEvents = nil
 -- ============================================
 
 -- Obtiene el centro y tamaño del BasePlate del mapa actual
-local function getMapBounds(mapName)
-	mapName = mapName or "Map0"
-
-	local maps = workspace:FindFirstChild("Maps")
-	if not maps then
-		warn("⚠️ [LobbyManager] Maps folder not found! Create workspace/Maps/Map0/BasePlate")
-		return Vector3.new(0, 5, 0), Vector3.new(100, 1, 100)
-	end
-
-	local mapFolder = maps:FindFirstChild(mapName)
-	if not mapFolder then
-		warn("⚠️ [LobbyManager] Map not found:", mapName)
-		return Vector3.new(0, 5, 0), Vector3.new(100, 1, 100)
-	end
-
-	local basePlate = mapFolder:FindFirstChild("BasePlate")
-	if not basePlate then
-		warn("⚠️ [LobbyManager] BasePlate not found in map:", mapName)
-		return Vector3.new(0, 5, 0), Vector3.new(100, 1, 100)
-	end
-
-	local center = basePlate.Position
-	local size = basePlate.Size
-
-	return center, size
-end
-
 -- Calcula posiciones de spawn para N jugadores distribuidos horizontalmente
 -- Todos en el mismo eje Z (juego 2D)
 local function calculateSpawnPositions(playerCount, mapName)
-	local center, size = getMapBounds(mapName)
-	local positions = {}
-
-	-- El eje Z es fijo (centro del mapa)
-	local fixedZ = center.Z
-
-	-- Altura de spawn
-	local spawnY = center.Y + (size.Y / 2) + CONFIG.SpawnHeight
-
-	-- Calcular distancia total necesaria
-	local totalWidth = CONFIG.BaseSpawnDistance * (playerCount - 1)
-
-	-- Asegurar que no exceda el mapa
-	local maxWidth = size.X * 0.8 -- Usar 80% del ancho del mapa
-	if totalWidth > maxWidth then
-		totalWidth = maxWidth
-	end
-
-	-- Posición inicial (izquierda)
-	local startX = center.X - (totalWidth / 2)
-	local spacing = playerCount > 1 and (totalWidth / (playerCount - 1)) or 0
-
-	for i = 1, playerCount do
-		local posX = startX + (spacing * (i - 1))
-		table.insert(positions, Vector3.new(posX, spawnY, fixedZ))
-	end
-
-	return positions
+	return SpawnService.CalculateSpawnPositions(playerCount, mapName)
 end
 
 -- Calcula posiciones para equipos (lado izquierdo vs lado derecho)
 local function calculateTeamSpawnPositions(team1Count, team2Count, mapName)
-	local center, size = getMapBounds(mapName)
-	local positions = { team1 = {}, team2 = {} }
-
-	local fixedZ = center.Z
-	local spawnY = center.Y + (size.Y / 2) + CONFIG.SpawnHeight
-
-	-- Team 1: lado izquierdo
-	local team1StartX = center.X - (size.X * 0.3)
-	local team1Spacing = CONFIG.BaseSpawnDistance
-	for i = 1, team1Count do
-		local posX = team1StartX - ((i - 1) * team1Spacing)
-		table.insert(positions.team1, Vector3.new(posX, spawnY, fixedZ))
-	end
-
-	-- Team 2: lado derecho
-	local team2StartX = center.X + (size.X * 0.3)
-	for i = 1, team2Count do
-		local posX = team2StartX + ((i - 1) * team1Spacing)
-		table.insert(positions.team2, Vector3.new(posX, spawnY, fixedZ))
-	end
-
-	return positions
+	return SpawnService.CalculateTeamSpawnPositions(team1Count, team2Count, mapName)
 end
 
 -- ============================================

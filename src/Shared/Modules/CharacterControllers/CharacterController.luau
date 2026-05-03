@@ -9,6 +9,7 @@ local AnimationController = require(CharacterControllers:WaitForChild("Animation
 local CharacterMotor = require(CharacterControllers:WaitForChild("CharacterMotor"))
 local CombatController = require(CharacterControllers:WaitForChild("CombatController"))
 local VFXService = require(Combat:WaitForChild("VFXService"))
+local ControllerRegistry = require(Combat:WaitForChild("ControllerRegistry"))
 local Characters = Modules:WaitForChild("Characters")
 local CharacterRegistry = require(Characters:WaitForChild("CharacterRegistry"))
 
@@ -51,10 +52,18 @@ function CharacterController.new(character, machine, characterName)
 	local self = setmetatable({}, CharacterController)
 	self._active = true
 	self._renderConnection = nil
+	self._eventConnections = {}
 
 	local humanoid = character:WaitForChild("Humanoid")
 	local root = character:WaitForChild("HumanoidRootPart")
-	local animator = humanoid:WaitForChild("Animator")
+
+	-- Skin models swapped via player.Character = newModel don't get an Animator
+	-- injected automatically (only LoadCharacter() characters do). Add one if missing.
+	local animator = humanoid:FindFirstChildOfClass("Animator") or humanoid:WaitForChild("Animator", 3)
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
 
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
 	humanoid.AutoRotate = false
@@ -213,8 +222,8 @@ function CharacterController.new(character, machine, characterName)
 	self:_registerBaseStates()
 	self.combat:RegisterStates(machine)
 
-	-- Predicción local de hits
-	_G.LocalHitPrediction = function(victimCharacter, attackData)
+	-- Registrar predicción local: se activa cuando nuestra hitbox confirma un golpe
+	ControllerRegistry.SetHitPrediction(function(victimCharacter, attackData)
 		if not self.context.opponent then
 			return
 		end
@@ -230,134 +239,145 @@ function CharacterController.new(character, machine, characterName)
 		end
 
 		self.combat:ApplyLocalHitPrediction(victimCharacter, attackData)
-	end
+	end)
 
-	SetOpponentEvent.OnClientEvent:Connect(function(opponentCharacter)
-		if opponentCharacter and opponentCharacter.Parent then
-			local opponentRoot = opponentCharacter:FindFirstChild("HumanoidRootPart")
-			if not opponentRoot then
-				opponentRoot = opponentCharacter:WaitForChild("HumanoidRootPart", 5)
+	ControllerRegistry.SetActiveController(self)
+
+	table.insert(
+		self._eventConnections,
+		SetOpponentEvent.OnClientEvent:Connect(function(opponentCharacter)
+			if opponentCharacter and opponentCharacter.Parent then
+				local opponentRoot = opponentCharacter:FindFirstChild("HumanoidRootPart")
+				if not opponentRoot then
+					opponentRoot = opponentCharacter:WaitForChild("HumanoidRootPart", 5)
+				end
+
+				if not opponentRoot then
+					return
+				end
+
+				self:SetOpponent(opponentRoot)
+
+				-- Resolver nombre de personaje del oponente
+				local opponentCharName = nil
+				local Players = game:GetService("Players")
+				local opponentPlayer = Players:GetPlayerFromCharacter(opponentCharacter)
+				if opponentPlayer then
+					-- Oponente es un jugador: leer su SelectedCharacter
+					opponentCharName = opponentPlayer:GetAttribute("SelectedCharacter")
+				else
+					-- Oponente es un dummy: leer SelectedDummyCharacter del jugador local
+					opponentCharName = Players.LocalPlayer:GetAttribute("SelectedDummyCharacter")
+				end
+
+				self.animationController:LoadOpponentAnimations(opponentCharacter, opponentCharName)
+
+				local CameraHandler = require(Combat:WaitForChild("CameraHandler"))
+				if CameraHandler.SetOpponent then
+					CameraHandler:SetOpponent(opponentCharacter)
+				end
 			end
+		end)
+	)
 
-			if not opponentRoot then
+	table.insert(
+		self._eventConnections,
+		ReplicateAnimationEvent.OnClientEvent:Connect(function(remoteCharacter, animationName)
+			if remoteCharacter ~= self.context.opponent then
 				return
 			end
 
-			self:SetOpponent(opponentRoot)
-
-			-- Resolver nombre de personaje del oponente
-			local opponentCharName = nil
-			local Players = game:GetService("Players")
-			local opponentPlayer = Players:GetPlayerFromCharacter(opponentCharacter)
-			if opponentPlayer then
-				-- Oponente es un jugador: leer su SelectedCharacter
-				opponentCharName = opponentPlayer:GetAttribute("SelectedCharacter")
-			else
-				-- Oponente es un dummy: leer SelectedDummyCharacter del jugador local
-				opponentCharName = Players.LocalPlayer:GetAttribute("SelectedDummyCharacter")
+			if self.combat.opponentIsInPredictedHitstun then
+				return
 			end
 
-			self.animationController:LoadOpponentAnimations(opponentCharacter, opponentCharName)
-
-			local CameraHandler = require(Combat:WaitForChild("CameraHandler"))
-			if CameraHandler.SetOpponent then
-				CameraHandler:SetOpponent(opponentCharacter)
-			end
-		end
-	end)
-
-	ReplicateAnimationEvent.OnClientEvent:Connect(function(remoteCharacter, animationName)
-		if remoteCharacter ~= self.context.opponent then
-			return
-		end
-
-		if self.combat.opponentIsInPredictedHitstun then
-			return
-		end
-
-		self.animationController:PlayOpponentAnimation(animationName)
-	end)
+			self.animationController:PlayOpponentAnimation(animationName)
+		end)
+	)
 
 	-- =============================================
 	-- ✨ RECIBIR VFX DE OTROS JUGADORES
 	-- =============================================
-	ReplicateVFXEvent.OnClientEvent:Connect(function(remoteCharacter, vfxType, vfxData)
-		if not remoteCharacter or not remoteCharacter.Parent then
-			return
-		end
-
-		if vfxType == "SwingVFX" then
-			local vfx = vfxData.VFX
-			local limbName = vfxData.VFX_Limb or "RightHand"
-			local duration = (vfxData.Startup or 0) + (vfxData.Active or 0)
-
-			if vfxData.HitLimbFlash and vfxData.HitLimbFlash.Enabled then
-				local flashConfig = table.clone(vfxData.HitLimbFlash)
-				flashConfig.Duration = duration
-				VFXService.AttackLimbFlash(remoteCharacter, limbName, vfxData.FacingDirection, flashConfig, 0)
+	table.insert(
+		self._eventConnections,
+		ReplicateVFXEvent.OnClientEvent:Connect(function(remoteCharacter, vfxType, vfxData)
+			if not remoteCharacter or not remoteCharacter.Parent then
+				return
 			end
 
-			if vfx and vfx.Startup then
-				VFXService.Play(
-					vfxData.CharacterName,
-					vfxData.AttackId,
-					vfx.Startup,
-					remoteCharacter,
-					limbName,
-					vfxData.FacingDirection,
-					vfxData.Startup or 0,
-					true -- forceBurst: burst como en Active
-				)
-			end
+			if vfxType == "SwingVFX" then
+				local vfx = vfxData.VFX
+				local limbName = vfxData.VFX_Limb or "RightHand"
+				local duration = (vfxData.Startup or 0) + (vfxData.Active or 0)
 
-			if vfx and vfx.Active then
-				local activeCharName = vfxData.CharacterName
-				local activeAttackId = vfxData.AttackId
-				local activeVfxName = vfx.Active
-				local activeLimb = limbName
-				local activeFacingDir = vfxData.FacingDirection
-				local activeDuration = vfxData.Active or 0.2
-				task.delay(vfxData.Startup or 0, function()
+				if vfxData.HitLimbFlash and vfxData.HitLimbFlash.Enabled then
+					local flashConfig = table.clone(vfxData.HitLimbFlash)
+					flashConfig.Duration = duration
+					VFXService.AttackLimbFlash(remoteCharacter, limbName, vfxData.FacingDirection, flashConfig, 0)
+				end
+
+				if vfx and vfx.Startup then
 					VFXService.Play(
-						activeCharName,
-						activeAttackId,
-						activeVfxName,
+						vfxData.CharacterName,
+						vfxData.AttackId,
+						vfx.Startup,
 						remoteCharacter,
-						activeLimb,
-						activeFacingDir,
-						activeDuration
+						limbName,
+						vfxData.FacingDirection,
+						vfxData.Startup or 0,
+						true -- forceBurst: burst como en Active
 					)
-				end)
-			end
+				end
 
-			if vfx and vfx.ActiveTrail then
-				VFXService.EnableTrail(
-					vfxData.CharacterName,
-					vfxData.AttackId,
-					remoteCharacter,
-					limbName,
-					vfxData.FacingDirection,
-					true
-				)
-				local charName = vfxData.CharacterName
-				local attackId = vfxData.AttackId
-				local facingDir = vfxData.FacingDirection
-				task.delay(duration, function()
-					VFXService.EnableTrail(charName, attackId, remoteCharacter, limbName, facingDir, false)
-				end)
+				if vfx and vfx.Active then
+					local activeCharName = vfxData.CharacterName
+					local activeAttackId = vfxData.AttackId
+					local activeVfxName = vfx.Active
+					local activeLimb = limbName
+					local activeFacingDir = vfxData.FacingDirection
+					local activeDuration = vfxData.Active or 0.2
+					task.delay(vfxData.Startup or 0, function()
+						VFXService.Play(
+							activeCharName,
+							activeAttackId,
+							activeVfxName,
+							remoteCharacter,
+							activeLimb,
+							activeFacingDir,
+							activeDuration
+						)
+					end)
+				end
+
+				if vfx and vfx.ActiveTrail then
+					VFXService.EnableTrail(
+						vfxData.CharacterName,
+						vfxData.AttackId,
+						remoteCharacter,
+						limbName,
+						vfxData.FacingDirection,
+						true
+					)
+					local charName = vfxData.CharacterName
+					local attackId = vfxData.AttackId
+					local facingDir = vfxData.FacingDirection
+					task.delay(duration, function()
+						VFXService.EnableTrail(charName, attackId, remoteCharacter, limbName, facingDir, false)
+					end)
+				end
+			elseif vfxType == "HitEffect" then
+				if vfxData.VFX_OnHit and vfxData.CharacterName and vfxData.AttackId then
+					VFXService.PlayAtPosition(
+						vfxData.CharacterName,
+						vfxData.AttackId,
+						vfxData.VFX_OnHit,
+						vfxData.Position,
+						0.5
+					)
+				end
 			end
-		elseif vfxType == "HitEffect" then
-			if vfxData.VFX_OnHit and vfxData.CharacterName and vfxData.AttackId then
-				VFXService.PlayAtPosition(
-					vfxData.CharacterName,
-					vfxData.AttackId,
-					vfxData.VFX_OnHit,
-					vfxData.Position,
-					0.5
-				)
-			end
-		end
-	end)
+		end)
+	)
 
 	local initialOpponentRoot = findOpponent()
 	if initialOpponentRoot then
@@ -391,13 +411,20 @@ end
 
 -- Destruye el controlador y desconecta todos los loops
 function CharacterController:Destroy()
-	-- print("🔴 [Controller] Destroying controller for", self.context.character.Name)
 	self._active = false
 
 	if self._renderConnection then
 		self._renderConnection:Disconnect()
 		self._renderConnection = nil
 	end
+
+	for _, conn in ipairs(self._eventConnections) do
+		conn:Disconnect()
+	end
+	self._eventConnections = {}
+
+	ControllerRegistry.SetHitPrediction(nil)
+	ControllerRegistry.SetActiveController(nil)
 end
 
 -- Sincroniza estado público (isCrouching, isBlocking, etc.) via Attributes
@@ -435,16 +462,6 @@ function CharacterController:_registerBaseStates()
 				return
 			end
 
-			--if self.context.isBlocking then
-			--	self.context.machine:SetState("Block")
-			--	return
-			--end
-
-			--if self.context.isCrouchBlocking then
-			--	self.context.machine:SetState("CrouchBlock")
-			--	return
-			--end
-
 			if self.context.isCrouching then
 				self.context.machine:SetState("Crouch")
 				return
@@ -470,16 +487,6 @@ function CharacterController:_registerBaseStates()
 			then
 				return
 			end
-
-			--if self.context.isBlocking then
-			--	self.context.machine:SetState("Block")
-			--	return
-			--end
-
-			--if self.context.isCrouchBlocking then
-			--	self.context.machine:SetState("CrouchBlock")
-			--	return
-			--end
 
 			if self.context.isCrouching then
 				self.context.machine:SetState("Crouch")
@@ -517,15 +524,8 @@ function CharacterController:_registerBaseStates()
 				return
 			end
 
-			--if self.context.isCrouchBlocking then
-			--	self.context.machine:SetState("CrouchBlock")
-			--	return
-			--end
-
 			if not self.context.isCrouching then
-				if self.context.isBlocking then
-					self.context.machine:SetState("Block")
-				elseif math.abs(self.context.moveDirection) > 0.01 then
+				if math.abs(self.context.moveDirection) > 0.01 then
 					self.context.machine:SetState("Walk")
 				else
 					self.context.machine:SetState("Idle")

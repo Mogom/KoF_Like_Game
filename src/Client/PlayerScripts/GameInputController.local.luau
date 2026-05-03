@@ -16,6 +16,7 @@ local CharacterControllers = Modules:WaitForChild("CharacterControllers")
 local CharacterController = require(CharacterControllers:WaitForChild("CharacterController"))
 local CommandParser = require(Combat:WaitForChild("CommandParser"))
 local CameraHandler = require(Combat:WaitForChild("CameraHandler"))
+local ControllerRegistry = require(Combat:WaitForChild("ControllerRegistry"))
 
 local player = Players.LocalPlayer
 
@@ -443,16 +444,20 @@ RunService.RenderStepped:Connect(onRenderStepped)
 -- ============================================
 
 -- Cuando cambia el Character (por LoadCharacter o skin swap)
+local _lastQueuedCharacter = nil
 local function onCharacterChanged()
 	local character = player.Character
-	if character then
-		-- Pequeño delay para asegurar que el personaje esté completamente cargado
-		task.defer(function()
-			if character == player.Character then -- Verificar que siga siendo el mismo
-				initializeForCharacter(character)
-			end
-		end)
+	-- Evitar doble inicialización: CharacterAdded y GetPropertyChangedSignal
+	-- disparan ambos cuando se hace player.Character = skinModel
+	if not character or character == _lastQueuedCharacter then
+		return
 	end
+	_lastQueuedCharacter = character
+	task.defer(function()
+		if character == player.Character then -- Verificar que siga siendo el mismo
+			initializeForCharacter(character)
+		end
+	end)
 end
 
 -- CharacterAdded (respawn normal via LoadCharacter)
@@ -488,15 +493,11 @@ if player.Character then
 end
 
 -- ============================================
--- 🌐 GLOBAL EXPORT
+-- 🌐 REGISTRY EXPORT
 -- ============================================
 
-_G.ForceResolveMovement = function()
+ControllerRegistry.SetForceResolveMovement(function()
 	resolveMovementFromKeyState()
-end
-
-_G.GetCurrentController = function()
-	return controller
-end
+end)
 
 -- print("🎮 [Input] GameInputController loaded")

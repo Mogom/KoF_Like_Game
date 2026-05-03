@@ -9,6 +9,7 @@ local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Utilities = Modules:WaitForChild("Utilities")
 
 local GameModeManager = require(Utilities:WaitForChild("GameModeManager"))
+local NetworkOwnershipManager = require(script.Parent:WaitForChild("NetworkOwnershipManager"))
 
 local ApplyDamageEvent = RemoteEvents:FindFirstChild("ApplyDamage")
 if not ApplyDamageEvent then
@@ -170,42 +171,8 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 	victimCharacter:SetAttribute("LastVictimPositionX", hitResult.VictimPositionX)
 	victimCharacter:SetAttribute("HitResultId", currentHitResultId + 1)
 
-	-- Network ownership temporal: dar control al atacante durante la reacción.
-	-- El motor de la víctima cede CFrame durante hitstun/knockdown/wakeup
-	-- (solo lee root.Position.X para mantener currentX sincronizado).
-	-- Al devolver ownership, currentX ya está sincronizado → sin rubber-banding.
+	-- Network ownership temporal: atacante controla physics de la víctima durante la reacción.
 	if victimPlayer then
-		local hitstunDuration = hitResult.HitstunDuration or 0.35
-		local hitstopDuration = (hitResult.HitstopFrames or 0) / 60
-		local knockdownExtra = 0
-		if hitResult.Knockdown then
-			knockdownExtra = 1.2 -- knockdownDuration (0.8) + wakeupDuration (0.4)
-		end
-
-		-- Paso 1: Ownership al servidor (neutral)
-		pcall(function()
-			victimRoot:SetNetworkOwner(nil)
-		end)
-
-		-- Paso 2: Inmediatamente al atacante
-		task.defer(function()
-			pcall(function()
-				victimRoot:SetNetworkOwner(attackerPlayer)
-			end)
-		end)
-
-		-- Paso 3: Devolver a la víctima al finalizar la cadena de reacción.
-		local totalReactionTime = hitstopDuration + hitstunDuration + knockdownExtra
-		task.delay(totalReactionTime + 0.15, function()
-			if victimRoot and victimRoot.Parent then
-				pcall(function()
-					if victimPlayer and victimPlayer.Parent then
-						victimRoot:SetNetworkOwner(victimPlayer)
-					else
-						victimRoot:SetNetworkOwnershipAuto()
-					end
-				end)
-			end
-		end)
+		NetworkOwnershipManager.TransferDuringReaction(victimRoot, attackerPlayer, victimPlayer, hitResult)
 	end
 end)

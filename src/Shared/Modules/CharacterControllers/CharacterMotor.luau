@@ -4,6 +4,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Combat = Modules:WaitForChild("Combat")
 local HitstopService = require(Combat:WaitForChild("HitstopService"))
+local ControllerRegistry = require(Combat:WaitForChild("ControllerRegistry"))
 
 -- Motor de movimiento y física del personaje (walk, push, jump, dodge, colisión, plane lock)
 local CharacterMotor = {}
@@ -298,6 +299,9 @@ function CharacterMotor:UpdateAirState()
 			self.context.machine:GetState() ~= "Attack"
 			and self.context.machine:GetState() ~= "Hitstun"
 			and self.context.machine:GetState() ~= "Knockdown"
+			and not self.context.isInHitstun
+			and not self.context.isKnockedDown
+			and not self.context.isInWakeup
 		then
 			self.context.machine:SetState("Airborne")
 		end
@@ -358,9 +362,7 @@ function CharacterMotor:UpdateAirState()
 					self.context.currentAttack = nil
 					self.context.currentAnimationName = nil
 
-					if _G.ForceResolveMovement then
-						_G.ForceResolveMovement()
-					end
+					ControllerRegistry.ForceResolveMovement()
 
 					if self.context.isCrouching then
 						self.context.machine:SetState("Crouch")
@@ -401,29 +403,6 @@ function CharacterMotor:UpdateFacing()
 		end
 	end
 end
-
--- DESACTIVADO: Auto-face al oponente (útil para modos 1v1 clásicos).
--- Para reactivar, reemplazar UpdateFacing arriba por esta versión.
---[[
-function CharacterMotor:UpdateFacingToOpponent()
-	if not self.context.opponentRoot or not self.context.opponentRoot.Parent then
-		return
-	end
-
-	local myX = self.context.currentX
-	local enemyX = self.context.opponentRoot.Position.X
-	local faceRight = enemyX >= myX
-	local newDirection = faceRight and "R" or "L"
-
-	if newDirection ~= self.context.currentDirection then
-		self.context.currentDirection = newDirection
-
-		if not self.context.attackLocked and not self.context.isInHitstun then
-			self.animationController:RefreshLocomotionAnimation()
-		end
-	end
-end
---]]
 
 -- Determina si una Part debe bloquear el movimiento (colisión)
 function CharacterMotor:IsBlockingPart(part)
@@ -623,29 +602,6 @@ function CharacterMotor:ApplyPlaneLockAndRotation()
 
 	root.CFrame = CFrame.new(finalX, finalY, finalZ) * CFrame.Angles(0, angleY, 0)
 end
-
--- DESACTIVADO: Versión que rota hacia el oponente (útil para modos 1v1 clásicos).
--- Para reactivar, reemplazar ApplyPlaneLockAndRotation arriba por esta versión.
---[[
-function CharacterMotor:ApplyPlaneLockAndRotationToOpponent()
-	local root = self.context.root
-	local pos = root.Position
-
-	local finalX = self.context.currentX
-	local finalY = pos.Y
-	local finalZ = self.context.lockedZ
-
-	local angleY = 0
-
-	if self.context.opponentRoot and self.context.opponentRoot.Parent then
-		local enemyX = self.context.opponentRoot.Position.X
-		local faceRight = enemyX >= finalX
-		angleY = faceRight and math.rad(-90) or math.rad(90)
-	end
-
-	root.CFrame = CFrame.new(finalX, finalY, finalZ) * CFrame.Angles(0, angleY, 0)
-end
---]]
 
 -- Inicia empuje por golpe: velocity vectorial basada en knockback y ángulo
 -- knockbackX/knockbackY: componentes del knockback ya calculados por CombatController

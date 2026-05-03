@@ -102,42 +102,28 @@ function AnimationController.new(context)
 		Punch3_L = loadSequence(self.animator, AnimationsTest.Punch3_L),
 
 		HeavyPunch_R = loadSequence(self.animator, AnimationsTest.Heavy_R),
-		HeavyPunch_L = loadSequence(self.animator, AnimationsTest.Heavy_R),
+		HeavyPunch_L = tryLoadSequence(self.animator, AnimationsTest, "Heavy_L")
+			or loadSequence(self.animator, AnimationsTest.Heavy_R),
 
 		HurtLight_R = loadSequence(self.animator, AnimationsTest.HurtLight_R),
-		HurtLight_L = loadSequence(self.animator, AnimationsTest.HurtLight_R),
+		HurtLight_L = tryLoadSequence(self.animator, AnimationsTest, "HurtLight_L")
+			or loadSequence(self.animator, AnimationsTest.HurtLight_R),
 
 		Crouch_R = loadSequence(self.animator, AnimationsTest.Crouch_R),
-		Crouch_L = loadSequence(self.animator, AnimationsTest.Crouch_R),
+		Crouch_L = tryLoadSequence(self.animator, AnimationsTest, "Crouch_L")
+			or loadSequence(self.animator, AnimationsTest.Crouch_R),
 
 		CrouchWalk_R = loadSequence(self.animator, AnimationsTest.CrouchWalk_R),
-		CrouchWalk_L = loadSequence(self.animator, AnimationsTest.CrouchWalk_R),
+		CrouchWalk_L = tryLoadSequence(self.animator, AnimationsTest, "CrouchWalk_L")
+			or loadSequence(self.animator, AnimationsTest.CrouchWalk_R),
 
 		CrouchPunch_R = loadSequence(self.animator, AnimationsTest.CrouchPunch_R),
-		CrouchPunch_L = loadSequence(self.animator, AnimationsTest.CrouchPunch_R),
+		CrouchPunch_L = tryLoadSequence(self.animator, AnimationsTest, "CrouchPunch_L")
+			or loadSequence(self.animator, AnimationsTest.CrouchPunch_R),
 
 		CrouchHeavy_R = loadSequence(self.animator, AnimationsTest.Punch3_R),
 		CrouchHeavy_L = loadSequence(self.animator, AnimationsTest.Punch3_L),
 	}
-
-	-- Nuevas animaciones (con fallback si no existen todavía)
-	-- Block
-	--self.animations.Block_R = tryLoadSequence(self.animator, AnimationsTest, "Block_R")
-	--	or self.animations.Idle_R
-	--self.animations.Block_L = tryLoadSequence(self.animator, AnimationsTest, "Block_L")
-	--	or self.animations.Idle_L
-
-	---- CrouchBlock
-	--self.animations.CrouchBlock_R = tryLoadSequence(self.animator, AnimationsTest, "CrouchBlock_R")
-	--	or self.animations.Block_R
-	--self.animations.CrouchBlock_L = tryLoadSequence(self.animator, AnimationsTest, "CrouchBlock_L")
-	--	or self.animations.Block_L
-
-	---- BlockHit (reacción al bloquear)
-	--self.animations.BlockHit_R = tryLoadSequence(self.animator, AnimationsTest, "BlockHit_R")
-	--	or self.animations.Block_R
-	--self.animations.BlockHit_L = tryLoadSequence(self.animator, AnimationsTest, "BlockHit_L")
-	--	or self.animations.Block_L
 
 	-- Dodge
 	self.animations.Dodge_R = tryLoadSequence(self.animator, AnimationsTest, "Dodge_R") or self.animations.Idle_R
@@ -340,33 +326,21 @@ function AnimationController:LoadOpponentAnimations(opponentCharacter, opponentC
 		Punch3_L = loadSequence(opponentAnimator, OpponentAnimsTest.Punch3_L),
 
 		HeavyPunch_R = loadSequence(opponentAnimator, OpponentAnimsTest.Heavy_R),
-		HeavyPunch_L = loadSequence(opponentAnimator, OpponentAnimsTest.Heavy_R),
+		HeavyPunch_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Heavy_L")
+			or loadSequence(opponentAnimator, OpponentAnimsTest.Heavy_R),
 
 		HurtLight_R = loadSequence(opponentAnimator, OpponentAnimsTest.HurtLight_R),
-		HurtLight_L = loadSequence(opponentAnimator, OpponentAnimsTest.HurtLight_R),
+		HurtLight_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "HurtLight_L")
+			or loadSequence(opponentAnimator, OpponentAnimsTest.HurtLight_R),
 
 		Crouch_R = loadSequence(opponentAnimator, OpponentAnimsTest.Crouch_R),
-		Crouch_L = loadSequence(opponentAnimator, OpponentAnimsTest.Crouch_R),
+		Crouch_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Crouch_L")
+			or loadSequence(opponentAnimator, OpponentAnimsTest.Crouch_R),
 
 		CrouchWalk_R = loadSequence(opponentAnimator, OpponentAnimsTest.CrouchWalk_R),
-		CrouchWalk_L = loadSequence(opponentAnimator, OpponentAnimsTest.CrouchWalk_R),
+		CrouchWalk_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchWalk_L")
+			or loadSequence(opponentAnimator, OpponentAnimsTest.CrouchWalk_R),
 	}
-
-	-- Nuevas animaciones del oponente con fallback
-	--self.opponentAnimations.Block_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Block_R")
-	--	or self.opponentAnimations.Idle_R
-	--self.opponentAnimations.Block_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "Block_L")
-	--	or self.opponentAnimations.Idle_L
-
-	--self.opponentAnimations.CrouchBlock_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchBlock_R")
-	--	or self.opponentAnimations.Block_R
-	--self.opponentAnimations.CrouchBlock_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchBlock_L")
-	--	or self.opponentAnimations.Block_L
-
-	--self.opponentAnimations.BlockHit_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "BlockHit_R")
-	--	or self.opponentAnimations.Block_R
-	--self.opponentAnimations.BlockHit_L = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "BlockHit_L")
-	--	or self.opponentAnimations.Block_L
 
 	self.opponentAnimations.CrouchPunch_R = tryLoadSequence(opponentAnimator, OpponentAnimsTest, "CrouchPunch_R")
 		or self.opponentAnimations.Punch_R
