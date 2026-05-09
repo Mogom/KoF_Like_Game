@@ -530,13 +530,16 @@ function CharacterMotor:UpdateWalkMovement(dt)
 	end
 
 	if self.context.attackLocked and not self.context.isInHitstun then
-		self.context.moveDirection = 0
+		-- Durante dodge no congelamos X: el motor de dodge controla la posición
+		if not self.context.isDodging then
+			self.context.moveDirection = 0
 
-		if self.context.attackLockedX == nil then
-			self.context.attackLockedX = self.context.currentX
+			if self.context.attackLockedX == nil then
+				self.context.attackLockedX = self.context.currentX
+			end
+
+			self.context.currentX = self.context.attackLockedX
 		end
-
-		self.context.currentX = self.context.attackLockedX
 		return
 	end
 
@@ -647,8 +650,12 @@ function CharacterMotor:Dodge()
 		return false
 	end
 
-	-- Capturar dirección ANTES de resetear moveDirection
-	local dir = self.context.currentDirection == "L" and -1 or 1
+	-- Brawlhalla style: dash en la dirección de movimiento activa;
+	-- si está quieto → spot dodge (i-frames en lugar, dir = 0)
+	local dir = 0
+	if math.abs(self.context.moveDirection) > 0.01 then
+		dir = self.context.moveDirection > 0 and 1 or -1
+	end
 
 	self.context.isDodging = true
 	self.context.dodgeCooldown = self.context.dodgeCooldownMax

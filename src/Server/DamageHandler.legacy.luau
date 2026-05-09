@@ -7,9 +7,24 @@ local RemoteEvents = Remotes:WaitForChild("Events")
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local Utilities = Modules:WaitForChild("Utilities")
+local Characters = Modules:WaitForChild("Characters")
+local Combat = Modules:WaitForChild("Combat")
 
 local GameModeManager = require(Utilities:WaitForChild("GameModeManager"))
 local NetworkOwnershipManager = require(script.Parent:WaitForChild("NetworkOwnershipManager"))
+local CharacterRegistry = require(Characters:WaitForChild("CharacterRegistry"))
+local DefaultAttacks = require(Combat:WaitForChild("Attacks"))
+
+-- Resuelve los stats reales de un ataque desde el servidor (CharacterRegistry o fallback global)
+local function resolveAttack(characterName, attackId)
+	if characterName then
+		local attacks = CharacterRegistry.GetAttacks(characterName)
+		if attacks and attacks[attackId] then
+			return attacks[attackId]
+		end
+	end
+	return DefaultAttacks[attackId]
+end
 
 local ApplyDamageEvent = RemoteEvents:FindFirstChild("ApplyDamage")
 if not ApplyDamageEvent then
@@ -77,21 +92,30 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 		return
 	end
 
-	local damage = tonumber(attackData.Damage)
-	if not damage then
-		warn("❌ Invalid damage in attackData from", attackerPlayer.Name)
+	-- Validar AttackId: el cliente solo debe enviar el Id, el servidor resuelve los stats reales
+	local attackId = attackData.Id
+	if type(attackId) ~= "string" or attackId == "" then
+		warn("❌ Missing or invalid AttackId from", attackerPlayer.Name)
 		return
 	end
 
-	-- Usar distancia en X solamente (es un juego 2D/2.5D, Z está lockeado)
-	-- Tolerancia amplia: el dummy no tiene NetworkOwner así que su posición
-	-- en el servidor puede estar desincronizada con el cliente.
-	-- local distanceX = math.abs(attackerRoot.Position.X - victimRoot.Position.X)
-	-- local distanceY = math.abs(attackerRoot.Position.Y - victimRoot.Position.Y)
-	-- if distanceX > 40 or distanceY > 20 then
-	-- 	warn("❌ Hit rejected: too far. DistX:", distanceX, "DistY:", distanceY)
-	-- 	return
-	-- end
+	-- Resolver stats reales desde el servidor — nunca usar valores de daño del cliente
+	local characterName = attackerCharacter:GetAttribute("AppliedCharacterName")
+	local resolvedAttack = resolveAttack(characterName, attackId)
+	if not resolvedAttack then
+		warn("❌ Unknown AttackId:", attackId, "char:", tostring(characterName), "from", attackerPlayer.Name)
+		return
+	end
+
+	-- Distance check: tolerancia generosa para el NetworkOwnership model (lag del atacante).
+	-- Hitbox max reach ~8 studs + compensación de lag a 150ms a 20 studs/s = ~3 studs extra.
+	-- 25 X cubre todos los ataques normales; 20 Y cubre saltos y ataques aéreos.
+	local distanceX = math.abs(attackerRoot.Position.X - victimRoot.Position.X)
+	local distanceY = math.abs(attackerRoot.Position.Y - victimRoot.Position.Y)
+	if distanceX > 25 or distanceY > 20 then
+		warn("❌ Hit rejected: too far. DistX:", distanceX, "DistY:", distanceY, "from", attackerPlayer.Name)
+		return
+	end
 
 	local victimPlayer = Players:GetPlayerFromCharacter(victimCharacter)
 	local expectedOpponent = GameModeManager.GetOpponent(attackerPlayer)
@@ -112,6 +136,8 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 		return
 	end
 
+	-- Usar stats del servidor (valores del cliente ignorados)
+	local damage = resolvedAttack.Damage
 	local currentDamagePercent = victimCharacter:GetAttribute("DamagePercent") or 0
 	local newDamagePercent = currentDamagePercent + damage
 	victimCharacter:SetAttribute("DamagePercent", newDamagePercent)
@@ -126,20 +152,20 @@ ApplyDamageEvent.OnServerEvent:Connect(function(attackerPlayer, victimCharacter,
 	local hitResult = {
 		Damage = damage,
 		DamagePercent = newDamagePercent,
-		HitType = attackData.HitType or "Light",
-		HitAnimation = attackData.HitAnimation or "HurtLight",
-		HitstunDuration = attackData.HitstunDuration or 0.25,
-		Pushback = attackData.Pushback or 0,
-		HitstopFrames = attackData.HitstopFrames or 0,
-		AttackHeight = attackData.AttackHeight or "Mid",
-		BlockPushback = attackData.BlockPushback or 0,
-		BlockstunDuration = attackData.BlockstunDuration or 0,
-		ChipDamage = attackData.ChipDamage or 0,
-		Knockdown = attackData.Knockdown or false,
-		LaunchForce = attackData.LaunchForce or 0,
-		LaunchAngle = attackData.LaunchAngle or 0,
-		BaseKnockback = attackData.BaseKnockback or 0,
-		KnockbackGrowth = attackData.KnockbackGrowth or 0,
+		HitType = resolvedAttack.HitType or "Light",
+		HitAnimation = resolvedAttack.HitAnimation or "HurtLight",
+		HitstunDuration = resolvedAttack.HitstunDuration or 0.25,
+		Pushback = resolvedAttack.Pushback or 0,
+		HitstopFrames = resolvedAttack.HitstopFrames or 0,
+		AttackHeight = resolvedAttack.AttackHeight or "Mid",
+		BlockPushback = resolvedAttack.BlockPushback or 0,
+		BlockstunDuration = resolvedAttack.BlockstunDuration or 0,
+		ChipDamage = resolvedAttack.ChipDamage or 0,
+		Knockdown = resolvedAttack.Knockdown or false,
+		LaunchForce = resolvedAttack.LaunchForce or 0,
+		LaunchAngle = resolvedAttack.LaunchAngle or 0,
+		BaseKnockback = resolvedAttack.BaseKnockback or 0,
+		KnockbackGrowth = resolvedAttack.KnockbackGrowth or 0,
 		AttackerPositionX = attackerRoot.Position.X,
 		VictimPositionX = victimRoot.Position.X,
 	}
